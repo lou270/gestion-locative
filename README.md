@@ -82,6 +82,3 @@ Le plus simple pour démarrer sans configurer Node.js ou la base de données.
 L'application est protégée. Seul l'administrateur défini dans le `.env` peut se connecter.
 Pour changer le mot de passe : modifiez le `.env` et redémarrez (Docker) ou relancez `npx prisma db seed` (Local).
 
-## 🚢 Déploiement
-
-Voir le fichier [DOCKER_GUIDE.md](./DOCKER_GUIDE.md) pour les détails sur le déploiement en production via GitHub Actions.
