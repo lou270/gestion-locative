@@ -1,0 +1,26 @@
+
+version: '3.8'
+
+services:
+  app:
+    # Remplacez <votre-user-github> et <nom-du-repo> par les vôtres
+    # Exemple: ghcr.io/lou-l/gestion-locative:latest
+    image: ghcr.io/${GITHUB_REPOSITORY}:latest
+    container_name: gestion-locative
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persistance des données (SQLite, Uploads PDF, etc)
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=file:/app/data/dev.db
+      # Ces variables seront lues depuis le fichier .env sur le serveur
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+      - YOUSIGN_API_KEY=${YOUSIGN_API_KEY}
+      - YOUSIGN_API_URL=${YOUSIGN_API_URL}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}

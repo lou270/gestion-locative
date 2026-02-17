@@ -1,0 +1,107 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Property {
+  id          String   @id @default(cuid())
+  name        String   // ex: "Appartement Centre"
+  address     String
+  postalCode  String
+  city        String
+  type        String   @default("Appartement") // Appartement, Maison, Parking
+
+  tenants     Tenant[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  
+  // Champs adressés conservés pour l'historique ou si pas de bien lié
+  address     String   
+  postalCode  String
+  city        String
+  
+  propertyId  String?
+  property    Property? @relation(fields: [propertyId], references: [id])
+
+  rentAmount  Float    // Loyer hors charges
+  chargeAmount Float   // Charges provisionnelles
+  startDate   DateTime // Date d'entrée
+  endDate     DateTime?
+
+  payments    Payment[]
+  signatureRequests SignatureRequest[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  periodStart DateTime
+  periodEnd   DateTime
+  
+  amount      Float    // Montant total payé
+  date        DateTime // Date de paiement
+  
+  typology    String   @default("Loyer") // Loyer, Regularisation, etc.
+  
+  createdAt   DateTime @default(now())
+}
+
+model SignatureRequest {
+  id          String   @id @default(cuid())
+  externalId  String?  @unique // ID côté Yousign
+  status      String   @default("PENDING") // PENDING, SIGNED, REJECTED, EXPIRED
+  documentUrl String?  // URL du document signé
+  
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Landlord {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String
+  phone       String?
+  address     String?
+  city        String?
+  postalCode  String?
+  siret       String?
+  companyName String? // Si SCI ou Société
+  
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("USER") // ADMIN, USER
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

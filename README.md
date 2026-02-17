@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+# 🏠 Gestion Locative
 
-First, run the development server:
+Application de gestion pour propriétaires bailleurs indépendants. Permet de gérer les biens, les locataires, les paiements, et de générer des documents administratifs (quittances, avis d'échéance).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+![Dashboard Preview](https://via.placeholder.com/800x400?text=Dashboard+Preview)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Fonctionnalités
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Tableau de Bord** : Vue d'ensemble des revenus, taux d'occupation, et locataires actifs.
+- **Gestion des Biens** : Ajout, modification et suivi des appartements/maisons.
+- **Gestion des Locataires** : Suivi des baux, dates d'entrée/sortie, loyers et charges.
+- **Documents PDF** : Génération automatique de quittances de loyer et d'avis d'échéance.
+- **Signature Électronique** : Intégration avec Yousign pour faire signer les baux (Webhooks inclus).
+- **Authentification** : Système sécurisé (Auth.js) avec gestion "Super Admin".
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Stack Technique
 
-## Learn More
+- **Framework** : [Next.js 15+](https://nextjs.org/) (App Router)
+- **Langage** : TypeScript
+- **Base de Données** : SQLite (via [Prisma ORM](https://www.prisma.io/))
+- **Styles** : Tailwind CSS
+- **Auth** : Auth.js (NextAuth v5)
+- **PDF** : @react-pdf/renderer
 
-To learn more about Next.js, take a look at the following resources:
+## 📦 Installation & Démarrage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Option 1 : Docker (Recommandé)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Le plus simple pour démarrer sans configurer Node.js ou la base de données.
 
-## Deploy on Vercel
+1. **Configurer l'environnement** :
+   Créez un fichier `.env` à la racine :
+   ```env
+   DATABASE_URL=file:/app/data/dev.db
+   AUTH_SECRET=votre_secret_super_long_et_aleatoire
+   ADMIN_EMAIL=admin@example.com
+   ADMIN_PASSWORD=votre_mot_de_passe
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2. **Lancer** :
+   ```bash
+   docker-compose up --build
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. **Accéder** :
+   Ouvrez [http://localhost:3000](http://localhost:3000).
+
+---
+
+### Option 2 : Local (Développement)
+
+1. **Installer les dépendances** :
+   ```bash
+   npm install
+   ```
+
+2. **Configurer l'environnement** :
+   Créez un fichier `.env` (ou `.env.local`) :
+   ```env
+   DATABASE_URL="file:./dev.db"
+   AUTH_SECRET="secret"
+   ADMIN_EMAIL="admin@example.com"
+   ADMIN_PASSWORD="password"
+   NEXT_PUBLIC_APP_URL="http://localhost:3000"
+   ```
+
+3. **Initialiser la base de données** :
+   ```bash
+   npx prisma migrate dev
+   npx prisma db seed # Crée le compte admin
+   ```
+
+4. **Lancer le serveur** :
+   ```bash
+   npm run dev
+   ```
+
+## 🔒 Authentification
+
+L'application est protégée. Seul l'administrateur défini dans le `.env` peut se connecter.
+Pour changer le mot de passe : modifiez le `.env` et redémarrez (Docker) ou relancez `npx prisma db seed` (Local).
+
+## 🚢 Déploiement
+
+Voir le fichier [DOCKER_GUIDE.md](./DOCKER_GUIDE.md) pour les détails sur le déploiement en production via GitHub Actions.
