@@ -24,6 +24,13 @@ build.log
 # misc
 .DS_Store
 *.pem
+*.db
+*.sqlite
+*.sqlite3
+/prisma/dev.db
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/migrations
 
 # debug
 npm-debug.log*
