@@ -30,7 +30,6 @@ build.log
 /prisma/dev.db
 /prisma/*.db
 /prisma/*.db-journal
-/prisma/migrations
 
 # debug
 npm-debug.log*
