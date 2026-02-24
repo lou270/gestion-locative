@@ -28,6 +28,7 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN ln -s /usr/lib/libssl.so.3 /lib/libssl.so.3
 
 # Generate Prisma Client
+ENV DATABASE_URL="file:/tmp/dev.db"
 RUN npx prisma generate
 
 RUN npm run build
