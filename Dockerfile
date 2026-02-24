@@ -1,5 +1,5 @@
 
-FROM node:24-alpine AS base
+FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -24,6 +24,8 @@ COPY . .
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
+
+RUN ln -s /usr/lib/libssl.so.3 /lib/libssl.so.3
 
 # Generate Prisma Client
 RUN npx prisma generate
