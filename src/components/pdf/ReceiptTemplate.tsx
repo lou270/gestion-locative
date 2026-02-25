@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
     page: {
@@ -52,7 +52,16 @@ interface ReceiptProps {
             city: string;
         } | null;
     };
-    landlord?: any; // Nouveau
+    landlord?: {
+        companyName?: string | null;
+        firstName?: string | null;
+        lastName?: string | null;
+        address?: string | null;
+        postalCode?: string | null;
+        city?: string | null;
+        email?: string | null;
+        siret?: string | null;
+    } | null;
     period: {
         start: Date;
         end: Date;

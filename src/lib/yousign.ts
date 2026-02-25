@@ -9,11 +9,7 @@ interface Signer {
     phone?: string;
 }
 
-interface SignatureRequestParams {
-    tenantId: string;
-    documentId: string; // Internal ID or Path, used to fetch the file
-    signer: Signer;
-}
+
 
 export async function initiateSignatureRequest(
     fileBuffer: Buffer,
@@ -50,7 +46,7 @@ export async function initiateSignatureRequest(
     // Note: specific implementation depends on how Yousign expects the file. 
     // Usually multipart/form-data for document upload.
     const formData = new FormData();
-    const blob = new Blob([fileBuffer as any]);
+    const blob = new Blob([fileBuffer as unknown as BlobPart]);
     formData.append('file', blob, fileName);
     formData.append('nature', 'signable_document');
     formData.append('parse_anchors', 'true'); // If we use anchors in the PDF
@@ -67,8 +63,7 @@ export async function initiateSignatureRequest(
         throw new Error(`Failed to upload document: ${docResponse.status}`);
     }
 
-    const document = await docResponse.json();
-    const documentId = document.id;
+
 
     // 3. Add Signer
     // Normalize phone number to E.164 if present

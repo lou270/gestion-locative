@@ -14,8 +14,29 @@ const styles = StyleSheet.create({
 });
 
 interface NoticeProps {
-    tenant: any;
-    landlord?: any; // Nouveau prop
+    tenant: {
+        firstName: string;
+        lastName: string;
+        address: string;
+        postalCode: string;
+        city: string;
+        property?: {
+            name: string;
+            address: string;
+            postalCode: string;
+            city: string;
+        } | null;
+    };
+    landlord?: {
+        companyName?: string | null;
+        firstName?: string | null;
+        lastName?: string | null;
+        address?: string | null;
+        postalCode?: string | null;
+        city?: string | null;
+        email?: string | null;
+        siret?: string | null;
+    } | null;
     period: { start: Date; end: Date };
     amount: { rent: number; charge: number; total: number; caf?: number };
     date: Date;

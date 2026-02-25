@@ -2,8 +2,12 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { auth } from '@/auth'
 
 export async function updateTenant(formData: FormData) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         const id = formData.get('id') as string
         const firstName = formData.get('firstName') as string
@@ -55,6 +59,9 @@ export async function updateTenant(formData: FormData) {
 }
 
 export async function getTenant(id: string) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         const tenant = await prisma.tenant.findUnique({
             where: { id },
@@ -75,6 +82,9 @@ export async function getTenant(id: string) {
 }
 
 export async function recordPayment(formData: FormData) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         const tenantId = formData.get('tenantId') as string
         const amount = parseFloat(formData.get('amount') as string)
@@ -107,6 +117,9 @@ export async function recordPayment(formData: FormData) {
 }
 
 export async function deletePayment(paymentId: string, tenantId: string) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         await prisma.payment.delete({
             where: { id: paymentId }
@@ -120,6 +133,9 @@ export async function deletePayment(paymentId: string, tenantId: string) {
 }
 
 export async function terminateLease(tenantId: string, endDate: Date) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     if (!endDate) {
         throw new Error("Date de fin requise");
     }
@@ -134,6 +150,9 @@ export async function terminateLease(tenantId: string, endDate: Date) {
 }
 
 export async function deleteProperty(propertyId: string) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     // Vérifier s'il y a des locataires actifs
     const activeTenants = await prisma.tenant.findFirst({
         where: {

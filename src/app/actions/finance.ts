@@ -2,8 +2,12 @@
 'use server'
 
 import prisma from '@/lib/prisma'
+import { auth } from '@/auth'
 
 export async function getFinancialStats() {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         const now = new Date()
         const currentYear = now.getFullYear()

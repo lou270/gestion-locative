@@ -2,8 +2,12 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { auth } from '@/auth'
 
 export async function getProperties() {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         const properties = await prisma.property.findMany({
             orderBy: { createdAt: 'desc' },
@@ -24,6 +28,9 @@ export async function getProperties() {
 }
 
 export async function createProperty(formData: FormData) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     try {
         const name = formData.get('name') as string
         const address = formData.get('address') as string

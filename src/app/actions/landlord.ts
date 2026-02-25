@@ -2,12 +2,18 @@
 
 import prisma from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { auth } from '@/auth';
 
 export async function getLandlord() {
+    const session = await auth();
+    if (!session) throw new Error("Unauthorized");
     return await prisma.landlord.findFirst();
 }
 
 export async function updateLandlord(data: FormData) {
+    const session = await auth();
+    if (!session) throw new Error("Unauthorized");
+
     const firstName = data.get('firstName') as string;
     const lastName = data.get('lastName') as string;
     const email = data.get('email') as string;

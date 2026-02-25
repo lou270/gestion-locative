@@ -3,8 +3,12 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { auth } from '@/auth'
 
 export async function calculateNewRent(currentRent: number, oldIndex: number, newIndex: number) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     if (!oldIndex || !newIndex || oldIndex === 0) {
         return { success: false, error: 'Indices invalides' }
     }
@@ -23,6 +27,9 @@ export async function calculateNewRent(currentRent: number, oldIndex: number, ne
 }
 
 export async function applyRentRevision(tenantId: string, newRentAmount: number) {
+    const session = await auth()
+    if (!session) throw new Error("Unauthorized")
+
     if (!newRentAmount || newRentAmount <= 0) {
         return { success: false, error: 'Montant invalide' }
     }
