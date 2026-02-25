@@ -1,10 +1,10 @@
 
 FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat openssl
 
 # Install dependencies only when needed
 FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
@@ -28,8 +28,11 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN ln -s /usr/lib/libssl.so.3 /lib/libssl.so.3
 
 # Generate Prisma Client
-ENV DATABASE_URL="file:/tmp/dev.db"
+ENV DATABASE_URL="file:/app/data/dev.db"
 RUN npx prisma generate
+
+# Create data directory so SQLite doesn't fail if initialized during build
+RUN mkdir -p /app/data
 
 RUN npm run build
 
