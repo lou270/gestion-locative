@@ -10,19 +10,38 @@ interface TenantFormProps {
 export function TenantForm({ properties }: TenantFormProps) {
     const [loading, setLoading] = useState(false)
     const [selectedPropertyId, setSelectedPropertyId] = useState('')
+    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
     async function handleSubmit(formData: FormData) {
         setLoading(true)
-        await createTenant(formData)
+        setMessage(null)
+
+        const result = await createTenant(formData)
+
         setLoading(false)
-        const form = document.querySelector('form') as HTMLFormElement
-        form?.reset()
-        setSelectedPropertyId('')
+
+        if (result.success) {
+            setMessage({ type: 'success', text: 'Le locataire a été ajouté avec succès !' })
+            const form = document.querySelector('form') as HTMLFormElement
+            form?.reset()
+            setSelectedPropertyId('')
+
+            // Masquer le message après 5 secondes
+            setTimeout(() => setMessage(null), 5000)
+        } else {
+            setMessage({ type: 'error', text: result.error || 'Une erreur est survenue.' })
+        }
     }
 
     return (
         <form action={handleSubmit} className="space-y-4 bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-xl font-bold mb-4">Nouveau Locataire</h2>
+
+            {message && (
+                <div className={`p-3 rounded mb-4 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {message.text}
+                </div>
+            )}
 
             <div className="bg-blue-50 p-3 rounded mb-4">
                 <label className="block text-sm font-semibold mb-1">Rattacher à un bien (Optionnel)</label>

@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/lou270/gestion-locative:latest
+    image: ghcr.io/lou270/rental-management:latest
     container_name: gestion-locative
     restart: always
     ports:
@@ -18,3 +18,4 @@ services:
       - AUTH_SECRET=${AUTH_SECRET}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - AUTH_TRUST_HOST=true
