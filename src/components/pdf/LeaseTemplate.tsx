@@ -164,7 +164,7 @@ export const LeaseDocument = ({ tenant, landlord, property, date }: LeaseProps) 
                     <Text style={{ fontWeight: 'bold', marginBottom: 30 }}>Le Locataire</Text>
                     <Text style={{ fontSize: 9, color: 'gray' }}>(Signature précédée de "Lu et approuvé")</Text>
                     {/* Anchor for Yousign - Invisible text */}
-                    <Text style={{ color: '#ffffff', fontSize: 1 }}>signature_locataire</Text>
+                    <Text style={{ color: '#ffffff', fontSize: 1 }}>{`{{s1|signature|150|50}}`}</Text>
                 </View>
             </View>
 

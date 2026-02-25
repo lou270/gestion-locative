@@ -11,8 +11,11 @@ export const authConfig = {
             const isOnDashboard = nextUrl.pathname.startsWith('/');
             const isLoginPage = nextUrl.pathname.startsWith('/login');
 
-            // Allow static files and API routes (careful with API protection separately if needed)
-            if (nextUrl.pathname.startsWith('/_next') || nextUrl.pathname.startsWith('/api')) {
+            // Allow static files and specific public endpoints (like webhooks)
+            if (
+                nextUrl.pathname.startsWith('/_next') ||
+                nextUrl.pathname.startsWith('/api/webhooks')
+            ) {
                 return true;
             }
 

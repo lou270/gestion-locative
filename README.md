@@ -32,11 +32,9 @@ Le plus simple pour démarrer sans configurer Node.js ou la base de données.
 1. **Configurer l'environnement** :
    Créez un fichier `.env` à la racine :
    ```env
-   DATABASE_URL=file:/app/data/dev.db
    AUTH_SECRET=votre_secret_super_long_et_aleatoire
    ADMIN_EMAIL=admin@example.com
    ADMIN_PASSWORD=votre_mot_de_passe
-   NEXT_PUBLIC_APP_URL=http://localhost:3000
    ```
 
 2. **Lancer** :

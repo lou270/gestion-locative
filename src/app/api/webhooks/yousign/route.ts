@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
         console.error('Webhook Error:', error);
-        // Always return 200 to Yousign to acknowledge receipt, unless it's a critical server error
-        // but useful to log it.
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        // Always return 200 to Yousign to acknowledge receipt so they don't retry endlessly 
+        // if the document is not found or other non-recoverable errors.
+        return NextResponse.json({ received: true }, { status: 200 });
     }
 }

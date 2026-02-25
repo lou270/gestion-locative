@@ -28,7 +28,6 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN ln -s /usr/lib/libssl.so.3 /lib/libssl.so.3
 
 # Generate Prisma Client
-ENV DATABASE_URL="file:/app/data/dev.db"
 RUN npx prisma generate
 
 # Create data directory so SQLite doesn't fail if initialized during build
@@ -52,6 +51,9 @@ COPY --from=builder /app/public ./public
 # Set the correct permission for prerender cache
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
+
+# Create data directory and set permissions for SQLite volume
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing

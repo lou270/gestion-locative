@@ -28,7 +28,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ tenan
         })
     );
 
-    return new NextResponse(stream as unknown as ReadableStream, {
+    const webStream = new ReadableStream({
+        start(controller) {
+            stream.on('data', (chunk) => controller.enqueue(chunk));
+            stream.on('end', () => controller.close());
+            stream.on('error', (err) => controller.error(err));
+        }
+    });
+
+    return new NextResponse(webStream, {
         headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="bail-location-${tenant.lastName}.pdf"`,

@@ -88,17 +88,6 @@ export async function initiateSignatureRequest(
             phone_number: phoneNumber,
             locale: 'fr',
         },
-        fields: [
-            {
-                document_id: documentId,
-                type: 'signature',
-                page: 1, // Note: For multi-page, ideally allow user to choose or pick last page. Defaulting to p1 is risky for leases.
-                // Improving placement:
-                x: 400, // Further right
-                y: 750, // Further down (closer to footer)
-                // height: 100, width: 150 defaults
-            }
-        ],
         signature_level: 'electronic_signature',
         signature_authentication_mode: authMode
     };
