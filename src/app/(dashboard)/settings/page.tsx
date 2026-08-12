@@ -1,23 +1,30 @@
+import { getLandlord } from '@/app/actions/landlord'
+import { SettingsForm } from '@/components/SettingsForm'
+import { Card } from '@/components/ui/Card'
+import { PageHeader } from '@/components/ui/PageHeader'
 
-import { getLandlord } from "@/app/actions/landlord";
-import { SettingsForm } from "@/components/SettingsForm";
+export const metadata = { title: 'Paramètres · Gestion Locative' }
 
 export default async function SettingsPage() {
-    const landlord = await getLandlord();
+    const landlord = await getLandlord()
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-10">
+        <div className="mx-auto max-w-3xl">
+            <PageHeader
+                title="Paramètres"
+                description="Profil bailleur utilisé sur les quittances, avis d'échéance et baux."
+            />
 
-            <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <header className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900">Paramètres</h1>
-                    <p className="text-slate-500 mt-2">Gérez les informations de votre profil bailleur (utilisées sur les documents).</p>
-                </header>
+            {!landlord && (
+                <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Renseignez votre profil : sans lui, les documents générés portent la mention
+                    générique « Agence / Propriétaire ».
+                </p>
+            )}
 
-                <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                    <SettingsForm landlord={landlord} />
-                </div>
-            </main>
+            <Card>
+                <SettingsForm landlord={landlord} />
+            </Card>
         </div>
-    );
+    )
 }

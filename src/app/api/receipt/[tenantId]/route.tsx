@@ -1,97 +1,89 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { renderToStream } from '@react-pdf/renderer';
-import { ReceiptDocument } from '@/components/pdf/ReceiptTemplate';
-import prisma from '@/lib/prisma';
-import { calculateProrata, calculateTotalDueUntilDate } from '@/lib/calculations';
+import { NextRequest, NextResponse } from 'next/server'
+import { ReceiptDocument } from '@/components/pdf/ReceiptTemplate'
+import prisma from '@/lib/prisma'
+import { guardApiRoute } from '@/lib/api-guard'
+import { calculateProrata } from '@/lib/calculations'
+import { cafAmountForMonth, canIssueReceipt, splitRentAndCharge } from '@/lib/ledger'
+import { endOfMonth, isSameMonth, resolveMonthParam, startOfMonth } from '@/lib/dates'
+import { formatCurrency } from '@/lib/format'
+import { pdfResponse } from '@/lib/pdf-response'
+
+export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ tenantId: string }> }) {
-    const params = await props.params;
-    const tenantId = params.tenantId;
+    const denied = await guardApiRoute()
+    if (denied) return denied
 
-    // Récupérer le locataire depuis la DB avec ses infos de bien
+    const { tenantId } = await props.params
+
     const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        include: { property: true }
-    });
+        include: { property: true, payments: true },
+    })
 
     if (!tenant) {
-        return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+        return NextResponse.json({ error: 'Locataire introuvable.' }, { status: 404 })
     }
 
-    const { searchParams } = new URL(request.url);
-    const monthParam = searchParams.get('month');
-    const yearParam = searchParams.get('year');
+    const { searchParams } = new URL(request.url)
+    const targetDate = resolveMonthParam(searchParams.get('month'), searchParams.get('year'))
 
-    const now = new Date();
-    // Utiliser les params ou la date actuelle par défaut
-    const targetDate = (monthParam && yearParam)
-        ? new Date(parseInt(yearParam), parseInt(monthParam) - 1, 1)
-        : now;
+    const startDate = new Date(tenant.startDate)
+    const endDate = tenant.endDate ? new Date(tenant.endDate) : null
 
-    const startOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-    const endOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    // La date de sortie était ignorée ici : une quittance pouvait être émise
+    // pour un mois postérieur à la fin du bail.
+    const rentDue = calculateProrata(
+        tenant.rentAmount,
+        tenant.chargeAmount,
+        targetDate,
+        startDate,
+        endDate,
+    )
 
-    const startDate = new Date(tenant.startDate);
-
-    // Ajustement de la date de début si c'est le mois d'entrée
-    const isEntryMonth = targetDate.getMonth() === startDate.getMonth() && targetDate.getFullYear() === startDate.getFullYear();
-    const effectiveStart = isEntryMonth ? startDate : startOfMonth;
-
-    const rentDue = calculateProrata(tenant.rentAmount, tenant.chargeAmount, targetDate, startDate);
-
-    // --- NOUVELLE LOGIQUE DE VALIDATION (Solde Global) ---
-    // 1. Calcul du dû cumulé jusqu'à la fin du mois demandé (pour valider le droit à la quittance)
-    const totalDueUntilEndOfMonth = calculateTotalDueUntilDate(tenant.rentAmount, tenant.chargeAmount, startDate, targetDate);
-
-    // 2. Calcul du payé cumulé TOTAL (tous les paiements enregistrés à ce jour)
-    const allPayments = await prisma.payment.findMany({
-        where: { tenantId: tenant.id }
-    });
-    const totalPaidGlobal = allPayments.reduce((sum, p) => sum + p.amount, 0);
-
-    // 3. Validation : Le solde global doit couvrir le dû jusqu'à ce mois
-    if (totalPaidGlobal < totalDueUntilEndOfMonth - 0.01) {
+    if (rentDue <= 0) {
         return NextResponse.json(
-            { error: `Loyer non acquitté. Compte débiteur. Total Dû (à fin ${targetDate.getMonth() + 1}/${targetDate.getFullYear()}): ${totalDueUntilEndOfMonth.toFixed(2)}€ / Total Payé: ${totalPaidGlobal.toFixed(2)}€` },
-            { status: 400 }
-        );
+            { error: "Aucun loyer n'est dû sur cette période (hors durée du bail)." },
+            { status: 400 },
+        )
     }
 
-    // Si rien n'est dû, on met 0 (ou on pourrait bloquer la génération)
-    const rentPart = (rentDue > 0) ? (rentDue * (tenant.rentAmount / (tenant.rentAmount + tenant.chargeAmount))) : 0;
-    const chargePart = (rentDue > 0) ? (rentDue * (tenant.chargeAmount / (tenant.rentAmount + tenant.chargeAmount))) : 0;
+    const eligibility = canIssueReceipt(tenant, tenant.payments, targetDate)
+    if (!eligibility.ok) {
+        return NextResponse.json(
+            {
+                error:
+                    `Loyer non acquitté : la quittance ne peut pas être délivrée. ` +
+                    `Dû cumulé ${formatCurrency(eligibility.totalDue)} / ` +
+                    `réglé ${formatCurrency(eligibility.totalPaid)}.`,
+            },
+            { status: 400 },
+        )
+    }
 
-    // Récupérer les paiements CAF pour ce mois spécifique
-    const cafPayments = allPayments.filter(p => {
-        const pDate = new Date(p.periodStart);
-        return pDate.getMonth() === targetDate.getMonth() &&
-            pDate.getFullYear() === targetDate.getFullYear() &&
-            p.typology === 'CAF';
-    });
-    const cafAmount = cafPayments.reduce((sum, p) => sum + p.amount, 0);
+    const { rent, charge } = splitRentAndCharge(rentDue, tenant.rentAmount, tenant.chargeAmount)
+    const cafAmount = cafAmountForMonth(tenant.payments, targetDate)
 
-    const landlord = await prisma.landlord.findFirst();
+    // Bornes réelles d'occupation sur le mois (entrée ou sortie en cours de mois).
+    const periodStart = isSameMonth(startDate, targetDate) ? startDate : startOfMonth(targetDate)
+    const periodEnd =
+        endDate && isSameMonth(endDate, targetDate) ? endDate : endOfMonth(targetDate)
 
-    const stream = await renderToStream(
+    const lastPayment = tenant.payments
+        .filter((p) => isSameMonth(new Date(p.periodStart), targetDate))
+        .sort((a, b) => b.date.getTime() - a.date.getTime())[0]
+
+    const landlord = await prisma.landlord.findFirst()
+
+    return pdfResponse(
         ReceiptDocument({
             tenant,
             landlord,
-            period: { start: effectiveStart, end: endOfMonth },
-            amount: {
-                rent: rentPart,
-                charge: chargePart,
-                total: rentDue,
-                caf: cafAmount
-            },
-            paymentDate: now, // Date du dernier paiement (approx) ou NOW
-            date: now
-        })
-    );
-
-    return new NextResponse(stream as unknown as ReadableStream, {
-        headers: {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="quittance-${tenant.lastName}-${targetDate.getMonth() + 1}-${targetDate.getFullYear()}.pdf"`,
-        },
-    });
+            period: { start: periodStart, end: periodEnd },
+            amount: { rent, charge, total: rentDue, caf: cafAmount },
+            paymentDate: lastPayment?.date ?? new Date(),
+            date: new Date(),
+        }),
+        `quittance-${tenant.lastName}-${targetDate.getMonth() + 1}-${targetDate.getFullYear()}`,
+    )
 }

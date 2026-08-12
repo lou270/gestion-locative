@@ -1,45 +1,35 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { LeaseDocument } from '@/components/pdf/LeaseTemplate'
+import prisma from '@/lib/prisma'
+import { guardApiRoute } from '@/lib/api-guard'
+import { pdfResponse } from '@/lib/pdf-response'
 
-import { NextRequest, NextResponse } from 'next/server';
-import { renderToStream } from '@react-pdf/renderer';
-import { LeaseDocument } from '@/components/pdf/LeaseTemplate';
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs'
 
-export async function GET(request: NextRequest, props: { params: Promise<{ tenantId: string }> }) {
-    const params = await props.params;
-    const tenantId = params.tenantId;
+export async function GET(_request: NextRequest, props: { params: Promise<{ tenantId: string }> }) {
+    const denied = await guardApiRoute()
+    if (denied) return denied
+
+    const { tenantId } = await props.params
 
     const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        include: { property: true }
-    });
+        include: { property: true },
+    })
 
     if (!tenant) {
-        return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+        return NextResponse.json({ error: 'Locataire introuvable.' }, { status: 404 })
     }
 
-    const landlord = await prisma.landlord.findFirst();
+    const landlord = await prisma.landlord.findFirst()
 
-    const stream = await renderToStream(
+    return pdfResponse(
         LeaseDocument({
             tenant,
             landlord,
             property: tenant.property,
-            date: new Date()
-        })
-    );
-
-    const webStream = new ReadableStream({
-        start(controller) {
-            stream.on('data', (chunk) => controller.enqueue(chunk));
-            stream.on('end', () => controller.close());
-            stream.on('error', (err) => controller.error(err));
-        }
-    });
-
-    return new NextResponse(webStream, {
-        headers: {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="bail-location-${tenant.lastName}.pdf"`,
-        },
-    });
+            date: new Date(),
+        }),
+        `bail-location-${tenant.lastName}`,
+    )
 }

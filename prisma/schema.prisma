@@ -19,6 +19,11 @@ model Property {
   city        String
   type        String   @default("Appartement") // Appartement, Maison, Parking
 
+  // Caractéristiques exigées par l'attestation de loyer CAF (Cerfa 10842*07)
+  surface     Float?   // Surface réelle en m²
+  furnished   Boolean  @default(false) // Loué meublé
+  singleRoom  Boolean  @default(false) // Chambre (pièce unique sans WC)
+
   tenants     Tenant[]
   
   createdAt   DateTime @default(now())
@@ -47,9 +52,12 @@ model Tenant {
 
   payments    Payment[]
   signatureRequests SignatureRequest[]
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([endDate])
 }
 
 model Payment {
@@ -63,9 +71,13 @@ model Payment {
   amount      Float    // Montant total payé
   date        DateTime // Date de paiement
   
-  typology    String   @default("Loyer") // Loyer, Regularisation, etc.
-  
+  typology    String   @default("Loyer") // Loyer, CAF, Regularisation, Depot
+
   createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, periodStart])
+  @@index([date])
 }
 
 model SignatureRequest {
@@ -76,9 +88,11 @@ model SignatureRequest {
   
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 model Landlord {

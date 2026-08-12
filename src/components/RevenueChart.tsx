@@ -1,45 +1,17 @@
-
 'use client'
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
+import type { ChartPoint } from './RevenueChartImpl'
 
-interface ChartProps {
-    data: any[]
-}
+const ChartSkeleton = () => <div className="h-64 w-full animate-pulse rounded-xl bg-slate-100" />
 
-export function RevenueChart({ data }: ChartProps) {
-    // Recharts needs to be client-side only to avoid hydration mismatch
-    const [mounted, setMounted] = useState(false)
-    useEffect(() => setMounted(true), [])
+// Recharts s'appuie sur les dimensions réelles du conteneur : le rendre côté
+// serveur provoquerait une divergence d'hydratation.
+const Chart = dynamic(() => import('./RevenueChartImpl').then((m) => m.RevenueChartImpl), {
+    ssr: false,
+    loading: ChartSkeleton,
+})
 
-    if (!mounted) return <div className="h-64 bg-gray-50 rounded-xl animate-pulse"></div>
-
-    return (
-        <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                        dataKey="name"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={10}
-                    />
-                    <YAxis
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) => `${value}€`}
-                    />
-                    <Tooltip
-                        formatter={(value: number | undefined) => [`${value ?? 0} €`, 'Revenu']}
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Bar dataKey="revenu" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                </BarChart>
-            </ResponsiveContainer>
-        </div>
-    )
+export function RevenueChart({ data }: { data: ChartPoint[] }) {
+    return <Chart data={data} />
 }

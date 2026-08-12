@@ -1,90 +1,104 @@
 'use client'
 
 import { recordPayment } from '@/app/actions/tenant'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useActionForm } from '@/hooks/useActionForm'
+import { Button } from '@/components/ui/Button'
+import { SelectField, TextField } from '@/components/ui/Field'
+import { PAYMENT_TYPES, PAYMENT_TYPE_LABELS } from '@/lib/ledger'
+import { toDateInputValue } from '@/lib/dates'
 
-export function PaymentForm({ tenantId }: { tenantId: string }) {
-    const [loading, setLoading] = useState(false)
-    const router = useRouter()
+const MONTHS = Array.from({ length: 12 }, (_, index) => {
+    const label = new Date(2000, index, 1).toLocaleString('fr-FR', { month: 'long' })
+    return { value: index + 1, label: label.charAt(0).toUpperCase() + label.slice(1) }
+})
 
-    async function handleSubmit(formData: FormData) {
-        setLoading(true)
-        const result = await recordPayment(formData)
-        setLoading(false)
-        if (result.success) {
-            const form = document.querySelector('#payment-form') as HTMLFormElement
-            form?.reset()
-            // Router refresh handled by server action revalidatePath normally, 
-            // but explicitly calling router.refresh() ensures client state update if needed.
-        }
-    }
+export function PaymentForm({
+    tenantId,
+    defaultMonth,
+    defaultYear,
+    defaultAmount,
+}: {
+    tenantId: string
+    defaultMonth?: number
+    defaultYear?: number
+    defaultAmount?: number
+}) {
+    const now = new Date()
+
+    const { onSubmit, pending, fieldErrors } = useActionForm(recordPayment, {
+        successMessage: 'Paiement enregistré.',
+        resetOnSuccess: true,
+    })
 
     return (
-        <form id="payment-form" action={handleSubmit} className="space-y-3">
+        <form onSubmit={onSubmit} className="space-y-4">
             <input type="hidden" name="tenantId" value={tenantId} />
 
-            <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Date du paiement</label>
-                <input
-                    type="date"
-                    name="date"
-                    defaultValue={new Date().toISOString().split('T')[0]}
-                    required
-                    className="w-full border p-2 rounded text-sm"
-                />
-            </div>
+            <TextField
+                label="Montant"
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                suffix="€"
+                placeholder="500,00"
+                defaultValue={defaultAmount ?? ''}
+                error={fieldErrors.amount}
+            />
 
-            <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Montant (€)</label>
-                <input
+            <TextField
+                label="Date d'encaissement"
+                name="date"
+                type="date"
+                required
+                defaultValue={toDateInputValue(now)}
+                error={fieldErrors.date}
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+                <SelectField
+                    label="Mois concerné"
+                    name="periodMonth"
+                    defaultValue={defaultMonth ?? now.getMonth() + 1}
+                    error={fieldErrors.periodMonth}
+                >
+                    {MONTHS.map((month) => (
+                        <option key={month.value} value={month.value}>
+                            {month.label}
+                        </option>
+                    ))}
+                </SelectField>
+
+                <TextField
+                    label="Année"
+                    name="periodYear"
                     type="number"
-                    step="0.01"
-                    name="amount"
-                    placeholder="ex: 500.00"
+                    min="2000"
+                    max="2100"
                     required
-                    className="w-full border p-2 rounded text-sm"
+                    defaultValue={defaultYear ?? now.getFullYear()}
+                    error={fieldErrors.periodYear}
                 />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-                <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Mois du Loyer</label>
-                    <select name="periodMonth" defaultValue={new Date().getMonth() + 1} className="w-full border p-2 rounded text-sm">
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                            <option key={m} value={m}>{new Date(0, m - 1).toLocaleString('fr-FR', { month: 'long' })}</option>
-                        ))}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1">Année</label>
-                    <input
-                        type="number"
-                        name="periodYear"
-                        defaultValue={new Date().getFullYear()}
-                        required
-                        className="w-full border p-2 rounded text-sm"
-                    />
-                </div>
-            </div>
-
-            <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Type</label>
-                <select name="type" className="w-full border p-2 rounded text-sm">
-                    <option value="Loyer">Loyer</option>
-                    <option value="CAF">CAF (Allocation Logement)</option>
-                    <option value="Regularisation">Régularisation Charges</option>
-                    <option value="Depot">Dépôt de Garantie</option>
-                </select>
-            </div>
-
-            <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 text-white py-2 rounded text-sm font-semibold hover:bg-indigo-700 transition"
+            <SelectField
+                label="Nature"
+                name="type"
+                defaultValue="Loyer"
+                error={fieldErrors.type}
+                hint="Le dépôt de garantie est suivi à part, hors solde de loyer."
             >
-                {loading ? 'Enregistrement...' : 'Valider le Paiement'}
-            </button>
+                {PAYMENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                        {PAYMENT_TYPE_LABELS[type]}
+                    </option>
+                ))}
+            </SelectField>
+
+            <Button type="submit" loading={pending} className="w-full">
+                Enregistrer le paiement
+            </Button>
         </form>
     )
 }

@@ -1,44 +1,44 @@
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { guardApiRoute } from '@/lib/api-guard'
+import { getSignatureRequestStatus } from '@/lib/yousign'
 
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { getSignatureRequestStatus } from '@/lib/yousign';
+export const runtime = 'nodejs'
 
-export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-    const params = await props.params;
-    const signatureRequestId = params.id;
+/** Statuts Yousign v3 → statuts internes. */
+const STATUS_MAP: Record<string, string> = {
+    done: 'SIGNED',
+    refused: 'REJECTED',
+    rejected: 'REJECTED',
+    canceled: 'REJECTED',
+    expired: 'EXPIRED',
+    ongoing: 'PENDING',
+    draft: 'PENDING',
+}
+
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+    const denied = await guardApiRoute()
+    if (denied) return denied
+
+    const { id } = await props.params
 
     try {
-        const signatureRequest = await prisma.signatureRequest.findUnique({
-            where: { id: signatureRequestId },
-        });
+        const signatureRequest = await prisma.signatureRequest.findUnique({ where: { id } })
 
-        if (!signatureRequest || !signatureRequest.externalId) {
-            return NextResponse.json({ error: 'Signature request not found' }, { status: 404 });
+        if (!signatureRequest?.externalId) {
+            return NextResponse.json({ error: 'Demande de signature introuvable.' }, { status: 404 })
         }
 
-        // Fetch status from Yousign
-        const yousignStatus = await getSignatureRequestStatus(signatureRequest.externalId);
+        const yousignStatus = await getSignatureRequestStatus(signatureRequest.externalId)
+        const newStatus = STATUS_MAP[yousignStatus.status] ?? signatureRequest.status
 
-        // Map Yousign status to our status
-        // Yousign statuses: 'draft', 'ongoing', 'done', 'expired', 'refused' (rejected)
-        let newStatus = signatureRequest.status;
-        if (yousignStatus.status === 'done') newStatus = 'SIGNED';
-        else if (yousignStatus.status === 'refused') newStatus = 'REJECTED';
-        else if (yousignStatus.status === 'expired') newStatus = 'EXPIRED';
-        else if (yousignStatus.status === 'ongoing') newStatus = 'PENDING';
-
-        // Update DB if changed
         if (newStatus !== signatureRequest.status) {
-            await prisma.signatureRequest.update({
-                where: { id: signatureRequestId },
-                data: { status: newStatus },
-            });
+            await prisma.signatureRequest.update({ where: { id }, data: { status: newStatus } })
         }
 
-        return NextResponse.json({ ...signatureRequest, status: newStatus, raw: yousignStatus });
-
-    } catch (error: any) {
-        console.error('Error checking signature status:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ id: signatureRequest.id, status: newStatus })
+    } catch (error) {
+        console.error('Error checking signature status:', error)
+        return NextResponse.json({ error: 'Statut indisponible pour le moment.' }, { status: 502 })
     }
 }

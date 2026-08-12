@@ -1,101 +1,72 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { NoticeDocument } from '@/components/pdf/NoticeTemplate'
+import prisma from '@/lib/prisma'
+import { guardApiRoute } from '@/lib/api-guard'
+import { calculateProrata } from '@/lib/calculations'
+import { cafAmountForMonth, getCarriedBalance, splitRentAndCharge } from '@/lib/ledger'
+import { endOfMonth, isSameMonth, resolveMonthParam, startOfMonth } from '@/lib/dates'
+import { pdfResponse } from '@/lib/pdf-response'
 
-import { NextRequest, NextResponse } from 'next/server';
-import { renderToStream } from '@react-pdf/renderer';
-import { NoticeDocument } from '@/components/pdf/NoticeTemplate';
-import prisma from '@/lib/prisma';
-import { calculateProrata, calculateTotalDueUntilDate } from '@/lib/calculations';
+export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ tenantId: string }> }) {
-    const params = await props.params;
-    const tenantId = params.tenantId;
+    const denied = await guardApiRoute()
+    if (denied) return denied
+
+    const { tenantId } = await props.params
 
     const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        include: { property: true }
-    });
+        include: { property: true, payments: true },
+    })
 
     if (!tenant) {
-        return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+        return NextResponse.json({ error: 'Locataire introuvable.' }, { status: 404 })
     }
 
-    const { searchParams } = new URL(request.url);
-    const monthParam = searchParams.get('month');
-    const yearParam = searchParams.get('year');
+    const { searchParams } = new URL(request.url)
+    const targetDate = resolveMonthParam(searchParams.get('month'), searchParams.get('year'))
 
-    const now = new Date();
-    let targetDate = now;
+    const startDate = new Date(tenant.startDate)
+    const endDate = tenant.endDate ? new Date(tenant.endDate) : null
 
-    if (monthParam && yearParam) {
-        const m = parseInt(monthParam);
-        const y = parseInt(yearParam);
-        if (!isNaN(m) && !isNaN(y)) {
-            targetDate = new Date(y, m - 1, 1);
-        }
+    const rentDue = calculateProrata(
+        tenant.rentAmount,
+        tenant.chargeAmount,
+        targetDate,
+        startDate,
+        endDate,
+    )
+
+    if (rentDue <= 0) {
+        return NextResponse.json(
+            { error: "Aucun loyer n'est dû sur cette période (hors durée du bail)." },
+            { status: 400 },
+        )
     }
 
-    const startOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-    const endOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    // Solde reporté : seuls les règlements imputés aux mois *antérieurs* sont
+    // déduits, sinon une avance payée d'avance serait comptée deux fois.
+    const previousBalance = getCarriedBalance(tenant, tenant.payments, targetDate)
 
-    const startDate = new Date(tenant.startDate);
-    const endDate = tenant.endDate ? new Date(tenant.endDate) : null;
+    const { rent, charge } = splitRentAndCharge(rentDue, tenant.rentAmount, tenant.chargeAmount)
+    const cafAmount = cafAmountForMonth(tenant.payments, targetDate)
 
-    // Ajuster début si entrée en cours de mois
-    const effectiveStart = (startDate > startOfMonth && startDate <= endOfMonth) ? startDate : startOfMonth;
+    const periodStart = isSameMonth(startDate, targetDate) ? startDate : startOfMonth(targetDate)
+    const periodEnd =
+        endDate && isSameMonth(endDate, targetDate) ? endDate : endOfMonth(targetDate)
 
-    // Ajuster fin si sortie en cours de mois
-    const effectiveEnd = (endDate && endDate < endOfMonth && endDate >= startOfMonth) ? endDate : endOfMonth;
-    const rentDue = calculateProrata(tenant.rentAmount, tenant.chargeAmount, targetDate, startDate, endDate);
+    const landlord = await prisma.landlord.findFirst()
 
-    // Calcul du solde précédent (jusqu'au mois d'avant la cible)
-    const endOfPrevMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 0);
-
-    let prevDue = 0;
-    try {
-        prevDue = calculateTotalDueUntilDate(tenant.rentAmount, tenant.chargeAmount, startDate, endOfPrevMonth);
-    } catch (e) {
-        return NextResponse.json({ error: 'Erreur calcul solde', details: String(e) }, { status: 500 });
-    }
-
-    // 2. Payé précédent (Total payé à ce jour)
-    const allPayments = await prisma.payment.findMany({ where: { tenantId: tenant.id } });
-    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
-
-    const previousBalance = totalPaid - prevDue;
-
-    const rentPart = (rentDue > 0) ? (rentDue * (tenant.rentAmount / (tenant.rentAmount + tenant.chargeAmount))) : 0;
-    const chargePart = (rentDue > 0) ? (rentDue * (tenant.chargeAmount / (tenant.rentAmount + tenant.chargeAmount))) : 0;
-
-    // Récupérer les paiements CAF pour ce mois spécifique
-    const cafPayments = allPayments.filter(p => {
-        const pDate = new Date(p.periodStart);
-        return pDate.getMonth() === targetDate.getMonth() &&
-            pDate.getFullYear() === targetDate.getFullYear() &&
-            p.typology === 'CAF';
-    });
-    const cafAmount = cafPayments.reduce((sum, p) => sum + p.amount, 0);
-
-    const landlord = await prisma.landlord.findFirst();
-
-    const stream = await renderToStream(
+    return pdfResponse(
         NoticeDocument({
             tenant,
             landlord,
-            period: { start: effectiveStart, end: effectiveEnd },
-            amount: {
-                rent: rentPart,
-                charge: chargePart,
-                total: rentDue,
-                caf: cafAmount
-            },
-            date: now,
-            previousBalance
-        })
-    );
-
-    return new NextResponse(stream as unknown as ReadableStream, {
-        headers: {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="avis-${tenant.lastName}-${targetDate.getMonth() + 1}-${targetDate.getFullYear()}.pdf"`,
-        },
-    });
+            period: { start: periodStart, end: periodEnd },
+            amount: { rent, charge, total: rentDue, caf: cafAmount },
+            date: new Date(),
+            previousBalance,
+        }),
+        `avis-echeance-${tenant.lastName}-${targetDate.getMonth() + 1}-${targetDate.getFullYear()}`,
+    )
 }

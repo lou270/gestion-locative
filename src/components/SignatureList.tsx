@@ -1,110 +1,100 @@
+'use client'
 
-'use client';
-
-import { LucideFileSignature, CheckCircle, XCircle, Clock, RotateCw } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { CheckCircle2, Clock, Download, RotateCw, XCircle } from 'lucide-react'
+import { Badge, type BadgeTone } from '@/components/ui/Badge'
+import { useToast } from '@/components/ui/Toast'
+import { formatDate } from '@/lib/format'
 
 interface SignatureRequest {
-    id: string;
-    status: string;
-    createdAt: string | Date;
-    externalId?: string | null;
+    id: string
+    status: string
+    createdAt: string | Date
 }
 
-interface SignatureListProps {
-    signatureRequests: SignatureRequest[];
+const STATUS_VIEW: Record<string, { label: string; tone: BadgeTone; icon: React.ReactNode }> = {
+    SIGNED: { label: 'Signé', tone: 'success', icon: <CheckCircle2 size={12} /> },
+    REJECTED: { label: 'Refusé', tone: 'danger', icon: <XCircle size={12} /> },
+    EXPIRED: { label: 'Expiré', tone: 'neutral', icon: <XCircle size={12} /> },
+    PENDING: { label: 'En attente', tone: 'warning', icon: <Clock size={12} /> },
 }
 
-export function SignatureList({ signatureRequests }: SignatureListProps) {
-    const router = useRouter();
+export function SignatureList({ signatureRequests }: { signatureRequests: SignatureRequest[] }) {
+    const router = useRouter()
+    const toast = useToast()
+    const [pending, startTransition] = useTransition()
 
-    if (!signatureRequests || signatureRequests.length === 0) {
-        return (
-            <div className="text-sm text-gray-500 italic">
-                Aucune demande de signature.
-            </div>
-        );
+    if (!signatureRequests?.length) {
+        return <p className="text-sm text-slate-500">Aucune demande de signature.</p>
     }
 
-    const checkStatus = async (id: string) => {
-        try {
-            const res = await fetch(`/api/signatures/${id}`);
-            if (res.ok) {
-                const data = await res.json();
-                alert(`Statut mis à jour : ${data.status}`);
-                router.refresh();
-            } else {
-                alert('Erreur lors de la vérification du statut');
+    const checkStatus = (id: string) => {
+        startTransition(async () => {
+            try {
+                const response = await fetch(`/api/signatures/${id}`)
+                const body = await response.json().catch(() => null)
+                if (!response.ok) {
+                    toast.error(body?.error ?? 'Vérification impossible.')
+                    return
+                }
+                toast.success(`Statut : ${STATUS_VIEW[body.status]?.label ?? body.status}`)
+                router.refresh()
+            } catch {
+                toast.error('Erreur réseau.')
             }
-        } catch (error) {
-            console.error(error);
-            alert('Erreur réseau');
-        }
-    };
+        })
+    }
 
     return (
-        <div className="space-y-3">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <LucideFileSignature className="w-4 h-4" />
-                Historique des signatures
-            </h3>
-            <ul className="space-y-2">
-                {signatureRequests.map((req) => (
-                    <li key={req.id} className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
-                        <div className="flex flex-col">
-                            <span className="text-sm font-medium text-gray-700">Bail de location</span>
-                            <span className="text-xs text-gray-500">
-                                {new Date(req.createdAt).toLocaleDateString('fr-FR')}
-                            </span>
+        <ul className="space-y-2">
+            {signatureRequests.map((request) => {
+                const view = STATUS_VIEW[request.status] ?? STATUS_VIEW.PENDING
+                return (
+                    <li
+                        key={request.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5"
+                    >
+                        <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800">Bail de location</p>
+                            <p className="text-xs text-slate-500">{formatDate(request.createdAt)}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <StatusBadge status={req.status} />
-                            {(req.status === 'PENDING' || req.status === 'ongoing') && (
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            <Badge tone={view.tone}>
+                                {view.icon}
+                                {view.label}
+                            </Badge>
+
+                            {request.status === 'PENDING' && (
                                 <button
-                                    onClick={() => checkStatus(req.id)}
-                                    className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
-                                    title="Vérifier le statut"
+                                    type="button"
+                                    onClick={() => checkStatus(request.id)}
+                                    disabled={pending}
+                                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                                    title="Actualiser le statut"
+                                    aria-label="Actualiser le statut"
                                 >
-                                    <RotateCw className="w-4 h-4" />
+                                    <RotateCw size={14} className={pending ? 'animate-spin' : ''} />
                                 </button>
                             )}
-                            {(req.status === 'SIGNED' || req.status === 'done') && (
+
+                            {request.status === 'SIGNED' && (
                                 <a
-                                    href={`/api/signatures/${req.id}/download`}
+                                    href={`/api/signatures/${request.id}/download`}
                                     target="_blank"
-                                    className="p-1 hover:bg-green-50 text-green-600 rounded-full transition-colors"
-                                    title="Télécharger le document signé"
+                                    rel="noopener"
+                                    className="rounded-lg p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50"
+                                    title="Télécharger le bail signé"
+                                    aria-label="Télécharger le bail signé"
                                 >
-                                    📥
+                                    <Download size={14} />
                                 </a>
                             )}
                         </div>
                     </li>
-                ))}
-            </ul>
-        </div>
-    );
-}
-
-function StatusBadge({ status }: { status: string }) {
-    const s = status.toUpperCase();
-    if (s === 'SIGNED' || s === 'DONE') {
-        return (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                <CheckCircle className="w-3 h-3" /> Signé
-            </span>
-        );
-    }
-    if (s === 'REJECTED' || s === 'REFUSED') {
-        return (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                <XCircle className="w-3 h-3" /> Refusé
-            </span>
-        );
-    }
-    return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-            <Clock className="w-3 h-3" /> En attente
-        </span>
-    );
+                )
+            })}
+        </ul>
+    )
 }

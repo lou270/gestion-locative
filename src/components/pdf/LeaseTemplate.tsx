@@ -1,5 +1,6 @@
 
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import type { PdfLandlord, PdfProperty, PdfTenant } from './types';
 
 const styles = StyleSheet.create({
     page: { padding: 40, fontSize: 10, fontFamily: 'Helvetica' },
@@ -16,9 +17,9 @@ const styles = StyleSheet.create({
 });
 
 interface LeaseProps {
-    tenant: any;
-    landlord: any;
-    property: any;
+    tenant: PdfTenant;
+    landlord?: PdfLandlord | null;
+    property?: PdfProperty | null;
     date: Date;
 }
 

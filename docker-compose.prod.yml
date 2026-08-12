@@ -2,7 +2,7 @@ services:
   app:
     image: ghcr.io/lou270/rental-management:latest
     container_name: gestion-locative
-    restart: always
+    restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
@@ -15,6 +15,8 @@ services:
       # Ces variables seront lues depuis le fichier .env sur le serveur
       - YOUSIGN_API_KEY=${YOUSIGN_API_KEY}
       - YOUSIGN_API_URL=${YOUSIGN_API_URL}
+      # Obligatoire pour que le webhook Yousign soit accepté (signature HMAC).
+      - YOUSIGN_WEBHOOK_SECRET=${YOUSIGN_WEBHOOK_SECRET}
       - AUTH_SECRET=${AUTH_SECRET}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}

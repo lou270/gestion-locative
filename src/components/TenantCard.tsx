@@ -1,85 +1,81 @@
-import Link from 'next/link';
+import Link from 'next/link'
+import { ArrowRight, Building2, MapPin } from 'lucide-react'
+import { Badge } from '@/components/ui/Badge'
+import { formatCurrency, formatDate, initials } from '@/lib/format'
+import type { TenantOverview } from '@/app/actions/tenant'
+import { cn } from '@/lib/cn'
 
-interface TenantCardProps {
-    tenant: any;
-    historyMonths: { month: number; year: number; label: string }[];
-}
+export function TenantCard({ tenant }: { tenant: TenantOverview }) {
+    const overdue = tenant.balance < -0.01
+    const credit = tenant.balance > 0.01
 
-export function TenantCard({ tenant, historyMonths }: TenantCardProps) {
     return (
-        <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100 overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-gray-50 bg-gradient-to-r from-gray-50 to-white">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <Link href={`/tenants/${tenant.id}`} className="font-bold text-lg text-gray-900 hover:text-indigo-600 transition-colors">
+        <Link
+            href={`/tenants/${tenant.id}`}
+            className={cn(
+                'group flex h-full flex-col rounded-2xl border bg-white p-5 shadow-sm shadow-slate-200/40 transition-all hover:shadow-md',
+                tenant.active
+                    ? 'border-slate-200/70 hover:border-indigo-200'
+                    : 'border-slate-200 bg-slate-50/60 hover:border-slate-300',
+            )}
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                    <span
+                        className={cn(
+                            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                            tenant.active
+                                ? 'bg-indigo-50 text-indigo-600'
+                                : 'bg-slate-200 text-slate-500',
+                        )}
+                    >
+                        {initials(tenant.firstName, tenant.lastName)}
+                    </span>
+                    <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-900 transition-colors group-hover:text-indigo-600">
                             {tenant.firstName} {tenant.lastName}
-                        </Link>
-                        <div className="text-sm text-gray-500 mt-1 flex items-center gap-1">
-                            {tenant.property ? (
-                                <>
-                                    <span>🏠</span>
-                                    <span className="font-medium text-gray-700">{tenant.property.name}</span>
-                                </>
+                        </p>
+                        <p className="flex items-center gap-1 truncate text-xs text-slate-500">
+                            {tenant.propertyName ? (
+                                <Building2 size={12} className="shrink-0" />
                             ) : (
-                                <>
-                                    <span>📍</span>
-                                    <span>{tenant.address}, {tenant.city}</span>
-                                </>
+                                <MapPin size={12} className="shrink-0" />
                             )}
-                        </div>
-                    </div>
-                    <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold border border-indigo-100">
-                        {tenant.rentAmount + tenant.chargeAmount} €
-                    </div>
-                </div>
-            </div>
-
-            <div className="p-5 flex-1">
-                <div className="mb-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Actions Rapides</p>
-                    <div className="grid grid-cols-2 gap-2">
-                        <a
-                            href={`/api/receipt/${tenant.id}`}
-                            target="_blank"
-                            className="flex items-center justify-center gap-1 bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                        >
-                            <span>📄</span> Quittance
-                        </a>
-                        <Link
-                            href={`/tenants/${tenant.id}`}
-                            className="flex items-center justify-center gap-1 bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-all shadow-sm hover:shadow-indigo-100"
-                        >
-                            <span>💰</span> Paiement
-                        </Link>
+                            {tenant.propertyName ?? tenant.city}
+                        </p>
                     </div>
                 </div>
 
-                <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Derniers mois</p>
-                    <div className="flex flex-wrap gap-2">
-                        {historyMonths.slice(1, 4).map((date) => (
-                            <a
-                                key={`${date.month}-${date.year}`}
-                                href={`/api/receipt/${tenant.id}?month=${date.month}&year=${date.year}`}
-                                target="_blank"
-                                className="text-xs bg-gray-50 border border-gray-200 text-gray-600 px-2 py-1 rounded transition-colors hover:bg-white hover:border-indigo-200 hover:text-indigo-600"
-                                title={`Quittance ${date.label}`}
-                            >
-                                {date.label.split(' ')[0].slice(0, 3)}.
-                            </a>
-                        ))}
-                        <Link href={`/tenants/${tenant.id}`} className="text-xs text-indigo-500 hover:text-indigo-700 px-1 py-1">
-                            +voir tout
-                        </Link>
-                    </div>
+                <div className="shrink-0 text-right">
+                    <p className="font-semibold text-slate-900">
+                        {formatCurrency(tenant.monthlyTotal)}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">par mois</p>
                 </div>
             </div>
 
-            <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
-                <Link href={`/tenants/${tenant.id}`} className="text-xs font-medium text-gray-500 hover:text-indigo-600 transition-colors">
-                    Voir le dossier complet →
-                </Link>
+            <div className="mt-4 flex items-center gap-2">
+                {!tenant.active ? (
+                    <Badge tone="neutral">Bail terminé le {formatDate(tenant.endDate)}</Badge>
+                ) : overdue ? (
+                    <Badge tone="danger">Impayé {formatCurrency(Math.abs(tenant.balance))}</Badge>
+                ) : credit ? (
+                    <Badge tone="info">Avance {formatCurrency(tenant.balance)}</Badge>
+                ) : (
+                    <Badge tone="success">À jour</Badge>
+                )}
             </div>
-        </div>
-    );
+
+            <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-500">
+                <span>Entrée le {formatDate(tenant.startDate)}</span>
+                <span className="flex items-center gap-1 font-medium text-indigo-600">
+                    Gérer
+                    <ArrowRight
+                        size={13}
+                        className="transition-transform group-hover:translate-x-0.5"
+                    />
+                </span>
+            </div>
+        </Link>
+    )
 }

@@ -2,36 +2,186 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { auth } from '@/auth'
+import { requireSession, UnauthorizedError } from '@/lib/auth-guard'
+import { getTenantBalance } from '@/lib/ledger'
+import {
+    ActionFailure,
+    ActionResult,
+    createTenantSchema,
+    paymentSchema,
+    terminateLeaseSchema,
+    updateTenantSchema,
+    validateFormData,
+} from '@/lib/validation'
 
-export async function updateTenant(formData: FormData) {
-    const session = await auth()
-    if (!session) throw new Error("Unauthorized")
+/** Traduit une exception en `ActionResult` sans fuiter de détail technique. */
+function toFailure(error: unknown, fallback: string): ActionFailure {
+    if (error instanceof UnauthorizedError) {
+        return { success: false, error: error.message }
+    }
+    console.error(fallback, error)
+    return { success: false, error: fallback }
+}
 
-    try {
-        const id = formData.get('id') as string
-        const firstName = formData.get('firstName') as string
-        const lastName = formData.get('lastName') as string
-        const email = formData.get('email') as string
-        const phone = formData.get('phone') as string
-        const rentAmount = parseFloat(formData.get('rentAmount') as string)
-        const chargeAmount = parseFloat(formData.get('chargeAmount') as string)
-        const startDate = new Date(formData.get('startDate') as string)
-
-        // Handle property update
-        const propertyId = formData.get('propertyId') as string || null
-        let address = formData.get('address') as string
-        let postalCode = formData.get('postalCode') as string
-        let city = formData.get('city') as string
-
-        if (propertyId) {
-            const property = await prisma.property.findUnique({ where: { id: propertyId } })
-            if (property) {
-                address = property.address
-                postalCode = property.postalCode
-                city = property.city
-            }
+/**
+ * Quand un bien est rattaché, son adresse fait foi ; sinon on garde l'adresse
+ * saisie manuellement (utile pour les baux historiques sans bien).
+ */
+async function resolveAddress(input: {
+    propertyId: string | null
+    address: string
+    postalCode: string
+    city: string
+}) {
+    if (!input.propertyId) {
+        return {
+            propertyId: null,
+            address: input.address,
+            postalCode: input.postalCode,
+            city: input.city,
         }
+    }
+
+    const property = await prisma.property.findUnique({ where: { id: input.propertyId } })
+    if (!property) {
+        throw new Error('Le bien sélectionné est introuvable.')
+    }
+
+    return {
+        propertyId: property.id,
+        address: property.address,
+        postalCode: property.postalCode,
+        city: property.city,
+    }
+}
+
+export async function getTenants() {
+    try {
+        await requireSession()
+        const tenants = await prisma.tenant.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: { payments: true, property: true },
+        })
+        return { success: true as const, data: tenants }
+    } catch (error) {
+        return toFailure(error, 'Impossible de récupérer les locataires.')
+    }
+}
+
+export interface TenantOverview {
+    id: string
+    firstName: string
+    lastName: string
+    city: string
+    propertyName: string | null
+    rentAmount: number
+    chargeAmount: number
+    monthlyTotal: number
+    startDate: Date
+    endDate: Date | null
+    active: boolean
+    balance: number
+}
+
+/** Liste des locataires enrichie du solde, pour les vues de synthèse. */
+export async function getTenantsOverview() {
+    try {
+        await requireSession()
+
+        const now = new Date()
+        const tenants = await prisma.tenant.findMany({
+            orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+            include: {
+                property: { select: { name: true } },
+                payments: {
+                    select: { amount: true, date: true, periodStart: true, typology: true },
+                },
+            },
+        })
+
+        const data: TenantOverview[] = tenants.map((tenant) => ({
+            id: tenant.id,
+            firstName: tenant.firstName,
+            lastName: tenant.lastName,
+            city: tenant.city,
+            propertyName: tenant.property?.name ?? null,
+            rentAmount: tenant.rentAmount,
+            chargeAmount: tenant.chargeAmount,
+            monthlyTotal: tenant.rentAmount + tenant.chargeAmount,
+            startDate: tenant.startDate,
+            endDate: tenant.endDate,
+            active: !tenant.endDate || tenant.endDate >= now,
+            balance: getTenantBalance(tenant, tenant.payments, now).balance,
+        }))
+
+        return { success: true as const, data }
+    } catch (error) {
+        return toFailure(error, 'Impossible de récupérer les locataires.')
+    }
+}
+
+export async function getTenant(id: string) {
+    try {
+        await requireSession()
+        const tenant = await prisma.tenant.findUnique({
+            where: { id },
+            include: {
+                payments: { orderBy: { date: 'desc' } },
+                property: true,
+                signatureRequests: { orderBy: { createdAt: 'desc' } },
+            },
+        })
+        if (!tenant) return { success: false as const, error: 'Locataire introuvable.' }
+        return { success: true as const, data: tenant }
+    } catch (error) {
+        return toFailure(error, 'Impossible de récupérer le locataire.')
+    }
+}
+
+export async function createTenant(formData: FormData): Promise<ActionResult<{ id: string }>> {
+    try {
+        await requireSession()
+
+        const parsed = validateFormData(createTenantSchema, formData)
+        if (!parsed.ok) return parsed.result
+
+        const { firstName, lastName, email, phone, rentAmount, chargeAmount, startDate } =
+            parsed.data
+        const location = await resolveAddress(parsed.data)
+
+        const tenant = await prisma.tenant.create({
+            data: {
+                firstName,
+                lastName,
+                email,
+                phone,
+                rentAmount,
+                chargeAmount,
+                startDate,
+                ...location,
+            },
+        })
+
+        revalidatePath('/')
+        revalidatePath('/tenants')
+        if (location.propertyId) revalidatePath(`/properties/${location.propertyId}`)
+
+        return { success: true, data: { id: tenant.id }, message: 'Locataire ajouté.' }
+    } catch (error) {
+        return toFailure(error, "Impossible d'ajouter le locataire.")
+    }
+}
+
+export async function updateTenant(formData: FormData): Promise<ActionResult> {
+    try {
+        await requireSession()
+
+        const parsed = validateFormData(updateTenantSchema, formData)
+        if (!parsed.ok) return parsed.result
+
+        const { id, firstName, lastName, email, phone, rentAmount, chargeAmount, startDate } =
+            parsed.data
+        const location = await resolveAddress(parsed.data)
 
         await prisma.tenant.update({
             where: { id },
@@ -43,152 +193,90 @@ export async function updateTenant(formData: FormData) {
                 rentAmount,
                 chargeAmount,
                 startDate,
-                propertyId,
-                address,
-                postalCode,
-                city
-            }
+                ...location,
+            },
         })
 
+        revalidatePath('/')
         revalidatePath(`/tenants/${id}`)
-        return { success: true }
+        return { success: true, message: 'Locataire mis à jour.' }
     } catch (error) {
-        console.error(error)
-        return { success: false, error: 'Failed to update tenant' }
+        return toFailure(error, 'Impossible de mettre à jour le locataire.')
     }
 }
 
-export async function getTenant(id: string) {
-    const session = await auth()
-    if (!session) throw new Error("Unauthorized")
-
+export async function recordPayment(formData: FormData): Promise<ActionResult> {
     try {
-        const tenant = await prisma.tenant.findUnique({
-            where: { id },
-            include: {
-                payments: {
-                    orderBy: { date: 'desc' }
-                },
-                property: true,
-                signatureRequests: {
-                    orderBy: { createdAt: 'desc' }
-                }
-            }
-        })
-        return { success: true, data: tenant }
-    } catch (error) {
-        return { success: false, error: 'Failed to fetch tenant' }
-    }
-}
+        await requireSession()
 
-export async function recordPayment(formData: FormData) {
-    const session = await auth()
-    if (!session) throw new Error("Unauthorized")
+        const parsed = validateFormData(paymentSchema, formData)
+        if (!parsed.ok) return parsed.result
 
-    try {
-        const tenantId = formData.get('tenantId') as string
-        const amount = parseFloat(formData.get('amount') as string)
-        const date = new Date(formData.get('date') as string)
-        const type = formData.get('type') as string
+        const { tenantId, amount, date, periodMonth, periodYear, type } = parsed.data
 
-        const periodMonth = parseInt(formData.get('periodMonth') as string)
-        const periodYear = parseInt(formData.get('periodYear') as string)
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })
+        if (!tenant) return { success: false, error: 'Locataire introuvable.' }
 
-        const periodStart = new Date(periodYear, periodMonth - 1, 1)
-        const periodEnd = new Date(periodYear, periodMonth, 0)
+        // Midi local : évite qu'un décalage de fuseau ne rattache le paiement
+        // au mois précédent lors de la relecture.
+        const periodStart = new Date(periodYear, periodMonth - 1, 1, 12)
+        const periodEnd = new Date(periodYear, periodMonth, 0, 12)
 
         await prisma.payment.create({
-            data: {
-                tenantId,
-                amount,
-                date,
-                periodStart,
-                periodEnd,
-                typology: type
-            }
+            data: { tenantId, amount, date, periodStart, periodEnd, typology: type },
         })
 
+        revalidatePath('/')
         revalidatePath(`/tenants/${tenantId}`)
-        return { success: true }
+        return { success: true, message: 'Paiement enregistré.' }
     } catch (error) {
-        console.error(error)
-        return { success: false, error: 'Failed to record payment' }
+        return toFailure(error, "Impossible d'enregistrer le paiement.")
     }
 }
 
-export async function deletePayment(paymentId: string, tenantId: string) {
-    const session = await auth()
-    if (!session) throw new Error("Unauthorized")
-
+export async function deletePayment(paymentId: string, tenantId: string): Promise<ActionResult> {
     try {
-        await prisma.payment.delete({
-            where: { id: paymentId }
-        })
+        await requireSession()
+
+        const payment = await prisma.payment.findUnique({ where: { id: paymentId } })
+        if (!payment) return { success: false, error: 'Paiement introuvable.' }
+
+        await prisma.payment.delete({ where: { id: paymentId } })
+
+        revalidatePath('/')
         revalidatePath(`/tenants/${tenantId}`)
-        return { success: true }
+        return { success: true, message: 'Paiement supprimé.' }
     } catch (error) {
-        console.error(error)
-        return { success: false, error: 'Failed to delete payment' }
+        return toFailure(error, 'Impossible de supprimer le paiement.')
     }
 }
 
-export async function terminateLease(tenantId: string, endDate: Date) {
-    const session = await auth()
-    if (!session) throw new Error("Unauthorized")
+export async function terminateLease(formData: FormData): Promise<ActionResult> {
+    try {
+        await requireSession()
 
-    if (!endDate) {
-        throw new Error("Date de fin requise");
-    }
+        const parsed = validateFormData(terminateLeaseSchema, formData)
+        if (!parsed.ok) return parsed.result
 
-    await prisma.tenant.update({
-        where: { id: tenantId },
-        data: { endDate }
-    });
+        const { tenantId, endDate } = parsed.data
 
-    revalidatePath(`/tenants/${tenantId}`);
-    return { success: true };
-}
-
-export async function deleteProperty(propertyId: string) {
-    const session = await auth()
-    if (!session) throw new Error("Unauthorized")
-
-    // Vérifier s'il y a des locataires actifs
-    const activeTenants = await prisma.tenant.findFirst({
-        where: {
-            propertyId,
-            endDate: null
-        }
-    });
-
-    if (activeTenants) {
-        throw new Error("Impossible de supprimer un bien avec des locataires actifs.");
-    }
-
-    // Récupérer les détails du bien pour copier l'adresse
-    const property = await prisma.property.findUnique({
-        where: { id: propertyId }
-    });
-
-    if (property) {
-        // Désassocier les anciens locataires en copiant l'adresse du bien
-        // UpdateMany ne permet pas de copier des champs d'une autre table, 
-        // mais ici tous les locataires ont la même source.
-        await prisma.tenant.updateMany({
-            where: { propertyId },
-            data: {
-                propertyId: null,
-                address: property.address,
-                postalCode: property.postalCode,
-                city: property.city
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })
+        if (!tenant) return { success: false, error: 'Locataire introuvable.' }
+        if (endDate < tenant.startDate) {
+            return {
+                success: false,
+                error: "La date de fin ne peut pas précéder la date d'entrée.",
+                fieldErrors: { endDate: "La date de fin précède la date d'entrée." },
             }
-        });
+        }
+
+        await prisma.tenant.update({ where: { id: tenantId }, data: { endDate } })
+
+        revalidatePath('/')
+        revalidatePath(`/tenants/${tenantId}`)
+        if (tenant.propertyId) revalidatePath(`/properties/${tenant.propertyId}`)
+        return { success: true, message: 'Fin de bail enregistrée.' }
+    } catch (error) {
+        return toFailure(error, "Impossible d'enregistrer la fin de bail.")
     }
-
-    await prisma.property.delete({
-        where: { id: propertyId }
-    });
-
-    revalidatePath('/properties');
-    return { success: true };
 }

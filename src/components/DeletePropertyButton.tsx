@@ -1,24 +1,40 @@
-'use client';
+'use client'
 
-import { deleteProperty } from '@/app/actions/tenant';
+import { useTransition } from 'react'
+import { Trash2 } from 'lucide-react'
+import { deleteProperty } from '@/app/actions/property'
+import { useToast } from '@/components/ui/Toast'
 
-export function DeletePropertyButton({ propertyId }: { propertyId: string }) {
-    const handleDelete = async () => {
-        if (!confirm("Voulez-vous vraiment supprimer ce bien ? Cette action est irréversible.")) return;
+export function DeletePropertyButton({
+    propertyId,
+    propertyName,
+}: {
+    propertyId: string
+    propertyName: string
+}) {
+    const [pending, startTransition] = useTransition()
+    const toast = useToast()
 
-        try {
-            await deleteProperty(propertyId);
-        } catch (e) {
-            alert("Erreur lors de la suppression." + e);
-        }
-    };
+    const handleDelete = () => {
+        if (!confirm(`Supprimer « ${propertyName} » ? Cette action est irréversible.`)) return
+
+        startTransition(async () => {
+            const result = await deleteProperty(propertyId)
+            if (result.success) toast.success('Bien supprimé.')
+            else toast.error(result.error)
+        })
+    }
 
     return (
         <button
+            type="button"
             onClick={handleDelete}
-            className="text-red-500 hover:text-red-700 text-sm font-medium transition-colors"
+            disabled={pending}
+            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            title="Supprimer le bien"
+            aria-label={`Supprimer le bien ${propertyName}`}
         >
-            Supprimer
+            <Trash2 size={16} />
         </button>
-    );
+    )
 }

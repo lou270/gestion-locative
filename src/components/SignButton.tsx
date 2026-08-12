@@ -1,68 +1,68 @@
+'use client'
 
-'use client';
+import { useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Loader2, PenLine } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
 
-import { useState } from 'react';
-import { Loader2, UploadCloud } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-
+/** Envoie un PDF de bail à la signature électronique (Yousign). */
 export function SignButton({ tenantId }: { tenantId: string }) {
-    const [loading, setLoading] = useState(false);
-    const router = useRouter();
+    const [loading, setLoading] = useState(false)
+    const inputRef = useRef<HTMLInputElement>(null)
+    const router = useRouter()
+    const toast = useToast()
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (!file) return
 
-        if (!confirm(`Voulez-vous envoyer "${file.name}" pour signature à ce locataire ?`)) return;
-
-        setLoading(true);
-        const formData = new FormData();
-        formData.append('tenantId', tenantId);
-        formData.append('file', file);
-
+        setLoading(true)
         try {
-            const res = await fetch('/api/signatures', {
-                method: 'POST',
-                body: formData,
-            });
+            const formData = new FormData()
+            formData.append('tenantId', tenantId)
+            formData.append('file', file)
 
-            if (!res.ok) {
-                const error = await res.text();
-                alert('Erreur: ' + error);
+            const response = await fetch('/api/signatures', { method: 'POST', body: formData })
+
+            if (response.ok) {
+                toast.success('Demande de signature envoyée au locataire.')
+                router.refresh()
             } else {
-                alert('Demande de signature envoyée avec succès !');
-                router.refresh(); // Refresh to show new status
+                const body = await response.json().catch(() => null)
+                toast.error(body?.error ?? "L'envoi a échoué.")
             }
-        } catch (err: any) {
-            alert('Erreur: ' + err.message);
+        } catch {
+            toast.error('Impossible de contacter le service de signature.')
         } finally {
-            setLoading(false);
-            // Reset input
-            e.target.value = '';
+            setLoading(false)
+            if (inputRef.current) inputRef.current.value = ''
         }
-    };
+    }
 
     return (
-        <div className="inline-block">
+        <>
             <input
+                ref={inputRef}
                 type="file"
                 id={`sign-upload-${tenantId}`}
-                className="hidden"
-                accept=".pdf"
+                className="sr-only"
+                accept="application/pdf"
                 onChange={handleFileChange}
                 disabled={loading}
             />
             <label
                 htmlFor={`sign-upload-${tenantId}`}
-                className={`w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 rounded-md flex items-center gap-2 cursor-pointer ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 ${
+                    loading ? 'pointer-events-none opacity-60' : ''
+                }`}
             >
                 {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 size={16} className="animate-spin text-slate-400" />
                 ) : (
-                    <span className="text-xl">✍️</span>
+                    <PenLine size={16} className="text-slate-400" />
                 )}
-                {loading ? 'Envoi...' : 'Demander signature'}
+                {loading ? 'Envoi en cours…' : 'Envoyer à signer'}
             </label>
-        </div>
-    );
+        </>
+    )
 }
