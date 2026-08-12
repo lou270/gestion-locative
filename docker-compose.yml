@@ -3,6 +3,11 @@ services:
     image: ghcr.io/lou270/rental-management:latest
     container_name: gestion-locative
     restart: unless-stopped
+    # Le conteneur écrit la base SQLite dans le volume monté : il doit tourner
+    # sous le propriétaire du dossier hôte, sinon SQLite échoue à l'ouverture.
+    # 1000 est l'uid du premier compte créé sur la plupart des serveurs Linux ;
+    # `id -u` le confirme, et APP_UID / APP_GID permettent de l'ajuster.
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     ports:
       - "3000:3000"
     volumes:

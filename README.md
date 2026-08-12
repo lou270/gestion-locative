@@ -32,11 +32,28 @@ Copiez `.env.example` vers `.env` et renseignez au minimum `AUTH_SECRET`,
 ### Option 1 : Docker (recommandé)
 
 ```bash
-docker compose up --build
+mkdir -p data
+docker compose up -d
 ```
 
 L'application est disponible sur [http://localhost:3000](http://localhost:3000).
 La base SQLite est persistée dans `./data`.
+
+**Propriétaire du dossier `data`.** Le conteneur tourne sous l'uid 1000 —
+l'utilisateur `node` de l'image de base, qui correspond au premier compte créé
+sur la plupart des serveurs Linux. Le dossier monté doit lui appartenir, sinon
+SQLite ne peut pas créer la base :
+
+```bash
+sudo chown -R 1000:1000 ./data
+```
+
+Si `id -u` renvoie autre chose que 1000 sur votre serveur, renseignez `APP_UID`
+et `APP_GID` dans le `.env` et alignez le `chown` sur ces valeurs.
+
+En cas d'échec, le conteneur s'arrête en indiquant le dossier concerné, l'uid
+qu'il utilise, celui du dossier et la commande à lancer — et non le
+« unable to open database file » de SQLite, qui ne dit rien d'exploitable.
 
 ### Option 2 : local (développement)
 
