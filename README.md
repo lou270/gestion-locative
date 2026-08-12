@@ -69,6 +69,55 @@ npm run build # build de production (inclut la vérification TypeScript)
 - **Authentification** : seul l'administrateur défini dans `.env` peut se
   connecter. Pour changer le mot de passe, modifiez le `.env` puis redémarrez
   (Docker) ou relancez `npx prisma db seed` (local).
+- **Tentatives de connexion** : 5 échecs depuis une même adresse IP en 15
+  minutes bloquent celle-ci pendant 15 minutes
+  ([`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)). Le contrôle est appliqué
+  dans `authorize()` et couvre donc aussi les appels directs à
+  `/api/auth/callback/credentials`, pas seulement le formulaire.
+  Le compteur vit en mémoire du processus : il repart à zéro au redémarrage du
+  conteneur. Une limitation au niveau du reverse proxy reste un complément utile
+  (voir ci-dessous).
+
+  L'adresse retenue est la **dernière** entrée de `X-Forwarded-For`, celle que le
+  proxy a réellement observée — les entrées de gauche sont fournies par le client
+  et peuvent être falsifiées. Si vous placez un CDN devant le proxy, cette valeur
+  devient l'adresse du CDN et la limitation perd son intérêt : il faut alors se
+  fier à l'en-tête d'adresse réelle du CDN.
+
+### Limiter aussi au niveau de Nginx Proxy Manager (optionnel)
+
+La directive `limit_req_zone` doit être déclarée dans le bloc `http`, que
+l'onglet « Advanced » d'un hôte ne permet pas d'atteindre. Elle passe par un
+fichier de configuration personnalisé.
+
+1. Sur le serveur, dans le volume `data` de Nginx Proxy Manager, créez
+   `/data/nginx/custom/http_top.conf` :
+
+   ```nginx
+   limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
+   ```
+
+2. Redémarrez le conteneur Nginx Proxy Manager pour qu'il prenne le fichier en
+   compte.
+
+3. Dans l'hôte proxy de l'application, onglet **Advanced**, ajoutez :
+
+   ```nginx
+   location /api/auth/ {
+       limit_req zone=login burst=5 nodelay;
+       limit_req_status 429;
+
+       include conf.d/include/proxy.conf;
+       proxy_pass $forward_scheme://$server:$port;
+   }
+   ```
+
+   `/api/auth/` couvre la soumission réelle du formulaire. Inutile de limiter
+   `/login`, qui ne fait qu'afficher la page.
+
+Vérifiez au passage que l'hôte transmet bien `X-Forwarded-Proto` (c'est le cas
+par défaut avec `proxy.conf`) : sans lui, les cookies de session ne sont pas
+marqués `Secure`.
 
 ## 📄 Attestation de loyer CAF (Cerfa 10842*07)
 

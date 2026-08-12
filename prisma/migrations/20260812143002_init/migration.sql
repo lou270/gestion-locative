@@ -6,6 +6,9 @@ CREATE TABLE "Property" (
     "postalCode" TEXT NOT NULL,
     "city" TEXT NOT NULL,
     "type" TEXT NOT NULL DEFAULT 'Appartement',
+    "surface" REAL,
+    "furnished" BOOLEAN NOT NULL DEFAULT false,
+    "singleRoom" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
@@ -82,7 +85,25 @@ CREATE TABLE "User" (
 );
 
 -- CreateIndex
+CREATE INDEX "Tenant_propertyId_idx" ON "Tenant"("propertyId");
+
+-- CreateIndex
+CREATE INDEX "Tenant_endDate_idx" ON "Tenant"("endDate");
+
+-- CreateIndex
+CREATE INDEX "Payment_tenantId_idx" ON "Payment"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "Payment_tenantId_periodStart_idx" ON "Payment"("tenantId", "periodStart");
+
+-- CreateIndex
+CREATE INDEX "Payment_date_idx" ON "Payment"("date");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "SignatureRequest_externalId_key" ON "SignatureRequest"("externalId");
+
+-- CreateIndex
+CREATE INDEX "SignatureRequest_tenantId_idx" ON "SignatureRequest"("tenantId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
