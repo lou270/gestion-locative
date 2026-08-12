@@ -1,4 +1,6 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { buildReceiptDeclaration, euros, frDate, landlordName, madeAt } from './format';
+import type { PdfLandlord, PdfProperty } from './types';
 
 const styles = StyleSheet.create({
     page: {
@@ -44,24 +46,10 @@ interface ReceiptProps {
         address: string;
         postalCode: string;
         city: string;
-        startDate: Date; // Ajout date entrée
-        property?: {
-            name: string;
-            address: string;
-            postalCode: string;
-            city: string;
-        } | null;
+        startDate: Date;
+        property?: PdfProperty | null;
     };
-    landlord?: {
-        companyName?: string | null;
-        firstName?: string | null;
-        lastName?: string | null;
-        address?: string | null;
-        postalCode?: string | null;
-        city?: string | null;
-        email?: string | null;
-        siret?: string | null;
-    } | null;
+    landlord?: PdfLandlord | null;
     period: {
         start: Date;
         end: Date;
@@ -72,95 +60,139 @@ interface ReceiptProps {
         total: number;
         caf?: number;
     };
+    /** Date du dernier encaissement imputé à la période. */
     paymentDate: Date;
     date: Date;
 }
 
-export const ReceiptDocument = ({ tenant, landlord, period, amount, date }: ReceiptProps) => (
-    <Document>
-        <Page size="A4" style={styles.page}>
-            <Text style={styles.title}>QUITTANCE DE LOYER</Text>
+export const ReceiptDocument = ({
+    tenant,
+    landlord,
+    period,
+    amount,
+    paymentDate,
+    date,
+}: ReceiptProps) => {
+    const cafAmount = amount.caf && amount.caf > 0 ? amount.caf : 0;
+    const paidByTenant = amount.total - cafAmount;
+    const bailleur = landlordName(landlord) || 'le bailleur';
+    const locataire = `${tenant.firstName} ${tenant.lastName}`;
+    const logement = tenant.property
+        ? `${tenant.property.name} — ${tenant.property.address}, ${tenant.property.postalCode} ${tenant.property.city}`
+        : `${tenant.address}, ${tenant.postalCode} ${tenant.city}`;
 
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.bold}>BAILLEUR</Text>
-                    <Text>{landlord ? (landlord.companyName || `${landlord.firstName} ${landlord.lastName}`) : "Agence / Propriétaire"}</Text>
-                    {landlord?.address && <Text>{landlord.address}</Text>}
-                    {landlord?.postalCode && landlord?.city && <Text>{landlord.postalCode} {landlord.city}</Text>}
-                    {landlord?.email && <Text>{landlord.email}</Text>}
-                    {landlord?.siret && <Text style={{ fontSize: 9, marginTop: 2 }}>SIRET : {landlord.siret}</Text>}
+    // La phrase est assemblée en amont plutôt qu'au fil du JSX : une expression
+    // `{}` précédée d'un retour à la ligne perd l'espace qui la sépare du
+    // texte, ce qui collait les mots à l'impression.
+    const declaration = buildReceiptDeclaration({
+        bailleur,
+        locataire,
+        paidByTenant,
+        cafAmount,
+        period,
+    });
+
+    return (
+        <Document>
+            <Page size="A4" style={styles.page}>
+                <Text style={styles.title}>QUITTANCE DE LOYER</Text>
+
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.bold}>BAILLEUR</Text>
+                        <Text>{bailleur}</Text>
+                        {landlord?.address ? <Text>{landlord.address}</Text> : null}
+                        {landlord?.postalCode && landlord?.city ? (
+                            <Text>{`${landlord.postalCode} ${landlord.city}`}</Text>
+                        ) : null}
+                        {landlord?.email ? <Text>{landlord.email}</Text> : null}
+                        {landlord?.siret ? (
+                            <Text style={{ fontSize: 9, marginTop: 2 }}>{`SIRET : ${landlord.siret}`}</Text>
+                        ) : null}
+                    </View>
+                    <View>
+                        <Text style={styles.bold}>LOCATAIRE</Text>
+                        <Text>{locataire}</Text>
+                        <Text>{tenant.address}</Text>
+                        <Text>{`${tenant.postalCode} ${tenant.city}`}</Text>
+                        <Text style={{ fontSize: 10, marginTop: 5, color: '#444' }}>
+                            {`Entrée dans les lieux le ${frDate(tenant.startDate)}`}
+                        </Text>
+                    </View>
                 </View>
-                <View>
-                    <Text style={styles.bold}>LOCATAIRE</Text>
-                    <Text>{tenant.firstName} {tenant.lastName}</Text>
-                    <Text>{tenant.address}</Text>
-                    <Text>{tenant.postalCode} {tenant.city}</Text>
-                    <Text style={{ fontSize: 10, marginTop: 5, color: '#444' }}>
-                        Entrée dans les lieux le : {new Date(tenant.startDate).toLocaleDateString('fr-FR')}
+
+                <View style={styles.section}>
+                    <Text>
+                        <Text style={styles.bold}>Logement loué : </Text>
+                        <Text>{logement}</Text>
                     </Text>
                 </View>
-            </View>
 
-            <View style={styles.section}>
-                <Text>
-                    <Text style={styles.bold}>Adresse de location : </Text>
-                    {tenant.property ? (
-                        <>
-                            {tenant.property.name} - {tenant.property.address}, {tenant.property.postalCode} {tenant.property.city}
-                        </>
-                    ) : (
-                        <>
-                            {tenant.address}, {tenant.postalCode} {tenant.city}
-                        </>
-                    )}
-                </Text>
-            </View>
-
-            <View style={styles.section}>
-                <Text>
-                    <Text style={styles.bold}>Période : </Text>
-                    du {period.start.toLocaleDateString('fr-FR')} au {period.end.toLocaleDateString('fr-FR')}
-                </Text>
-            </View>
-
-            <View style={{ marginTop: 20, marginBottom: 20, borderTop: 1, borderBottom: 1, paddingRight: 10 }}>
-                <View style={[styles.row, { marginTop: 10 }]}>
-                    <Text>Loyer hors charges</Text>
-                    <Text>{amount.rent.toFixed(2)} €</Text>
+                <View style={styles.section}>
+                    <Text>
+                        <Text style={styles.bold}>Période : </Text>
+                        <Text>{`du ${frDate(period.start)} au ${frDate(period.end)}`}</Text>
+                    </Text>
                 </View>
-                <View style={styles.row}>
-                    <Text>Provision pour charges</Text>
-                    <Text>{amount.charge.toFixed(2)} €</Text>
-                </View>
-                {/* Ajout ligne CAF */}
-                {(amount.caf && amount.caf > 0) ? (
-                    <View style={styles.row}>
-                        <Text>Allocation Logement (CAF)</Text>
-                        <Text>- {amount.caf.toFixed(2)} €</Text>
+
+                <View
+                    style={{
+                        marginTop: 20,
+                        marginBottom: 20,
+                        borderTop: 1,
+                        borderBottom: 1,
+                        paddingRight: 10,
+                    }}
+                >
+                    {/* Le détail loyer / charges est exigé par l'article 21 de la
+                        loi du 6 juillet 1989 : la quittance doit distinguer les deux. */}
+                    <View style={[styles.row, { marginTop: 10 }]}>
+                        <Text>Loyer hors charges</Text>
+                        <Text>{euros(amount.rent)}</Text>
                     </View>
-                ) : null}
-                <View style={[styles.row, { marginTop: 10, borderTop: 1, paddingTop: 5 }]}>
-                    <Text style={styles.bold}>TOTAL PAYÉ PAR LE LOCATAIRE</Text>
-                    <Text style={styles.bold}>{(amount.total - (amount.caf || 0)).toFixed(2)} €</Text>
+                    <View style={styles.row}>
+                        <Text>Provision pour charges</Text>
+                        <Text>{euros(amount.charge)}</Text>
+                    </View>
+                    <View style={[styles.row, { marginTop: 6, borderTop: 1, paddingTop: 5 }]}>
+                        <Text style={styles.bold}>TOTAL DE LA QUITTANCE</Text>
+                        <Text style={styles.bold}>{euros(amount.total)}</Text>
+                    </View>
+
+                    {cafAmount > 0 ? (
+                        <>
+                            <View style={[styles.row, { marginTop: 6 }]}>
+                                <Text>dont allocation logement versée par la CAF</Text>
+                                <Text>{euros(cafAmount)}</Text>
+                            </View>
+                            <View style={styles.row}>
+                                <Text>dont réglé par le locataire</Text>
+                                <Text>{euros(paidByTenant)}</Text>
+                            </View>
+                        </>
+                    ) : null}
                 </View>
-            </View>
 
-            <View style={styles.section}>
-                <Text>
-                    Je soussigné déclare avoir reçu de M/Mme {tenant.lastName} la somme de {(amount.total - (amount.caf || 0)).toFixed(2)} euros
-                    {(amount.caf && amount.caf > 0) ? ` (ainsi que ${amount.caf.toFixed(2)} euros d'allocation logement de la CAF) ` : ''}
-                    correspondant au loyer et aux charges pour la période citée ci-dessus.
+                <View style={styles.section}>
+                    <Text>{declaration}</Text>
+                </View>
+
+                <View style={styles.section}>
+                    <Text style={{ fontSize: 11, color: '#444' }}>
+                        {`Paiement reçu le ${frDate(paymentDate)}.`}
+                    </Text>
+                </View>
+
+                <View style={{ marginTop: 25 }}>
+                    <Text>{madeAt(landlord?.city, date)}</Text>
+                    <Text style={{ marginTop: 25 }}>{`Signature du bailleur — ${bailleur}`}</Text>
+                </View>
+
+                <Text style={styles.footer}>
+                    Cette quittance annule tous les reçus qui auraient pu être donnés pour acompte
+                    versé sur le présent terme.
                 </Text>
-            </View>
-
-            <View style={styles.section}>
-                <Text>Fait à Paris, le {date.toLocaleDateString('fr-FR')}</Text>
-                <Text style={{ marginTop: 20 }}>Signature du bailleur</Text>
-            </View>
-
-            <Text style={styles.footer}>
-                Cette quittance annule tous les reçus qui auraient pu être donnés pour acompte versé sur le présent terme.
-            </Text>
-        </Page>
-    </Document>
-);
+            </Page>
+        </Document>
+    );
+};

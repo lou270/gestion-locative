@@ -1,7 +1,7 @@
-
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { euros, frDate, landlordName, madeAt } from './format';
+import type { PdfLandlord, PdfProperty } from './types';
 
-// Réutilisation des styles de base (dupliqués pour l'instant pour indépendance)
 const styles = StyleSheet.create({
     page: { padding: 40, fontSize: 12, fontFamily: 'Helvetica' },
     title: { fontSize: 20, marginBottom: 20, textAlign: 'center', fontWeight: 'bold' },
@@ -10,7 +10,7 @@ const styles = StyleSheet.create({
     row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
     bold: { fontWeight: 'bold', fontFamily: 'Helvetica-Bold' },
     footer: { marginTop: 40, textAlign: 'center', fontSize: 10, color: 'gray' },
-    box: { borderWidth: 1, borderColor: '#000', padding: 10, marginTop: 10 }
+    box: { borderWidth: 1, borderColor: '#000', padding: 10, marginTop: 10 },
 });
 
 interface NoticeProps {
@@ -20,114 +20,122 @@ interface NoticeProps {
         address: string;
         postalCode: string;
         city: string;
-        property?: {
-            name: string;
-            address: string;
-            postalCode: string;
-            city: string;
-        } | null;
+        property?: PdfProperty | null;
     };
-    landlord?: {
-        companyName?: string | null;
-        firstName?: string | null;
-        lastName?: string | null;
-        address?: string | null;
-        postalCode?: string | null;
-        city?: string | null;
-        email?: string | null;
-        siret?: string | null;
-    } | null;
+    landlord?: PdfLandlord | null;
     period: { start: Date; end: Date };
     amount: { rent: number; charge: number; total: number; caf?: number };
     date: Date;
+    /** Positif : avance du locataire. Négatif : arriérés. */
     previousBalance: number;
 }
 
-export const NoticeDocument = ({ tenant, landlord, period, amount, date, previousBalance }: NoticeProps) => (
-    <Document>
-        <Page size="A4" style={styles.page}>
-            <Text style={styles.title}>AVIS D'ÉCHÉANCE</Text>
+export const NoticeDocument = ({
+    tenant,
+    landlord,
+    period,
+    amount,
+    date,
+    previousBalance,
+}: NoticeProps) => {
+    const cafAmount = amount.caf && amount.caf > 0 ? amount.caf : 0;
+    const carried = Math.abs(previousBalance) > 0.01 ? previousBalance : 0;
+    const totalDue = amount.total - carried - cafAmount;
 
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.bold}>BAILLEUR</Text>
-                    <Text>{landlord ? (landlord.companyName || `${landlord.firstName} ${landlord.lastName}`) : "Agence / Propriétaire"}</Text>
-                    {landlord?.address && <Text>{landlord.address}</Text>}
-                    {landlord?.postalCode && landlord?.city && <Text>{landlord.postalCode} {landlord.city}</Text>}
-                    {landlord?.email && <Text>{landlord.email}</Text>}
-                    {landlord?.siret && <Text style={{ fontSize: 9, marginTop: 2 }}>SIRET : {landlord.siret}</Text>}
-                </View>
-                <View>
-                    <Text style={styles.bold}>DESTINATAIRE</Text>
-                    <Text>{tenant.firstName} {tenant.lastName}</Text>
-                    <Text>{tenant.address}</Text>
-                    <Text>{tenant.postalCode} {tenant.city}</Text>
-                </View>
-            </View>
+    const bailleur = landlordName(landlord) || 'Agence / Propriétaire';
+    const logement = tenant.property
+        ? `${tenant.property.name} — ${tenant.property.address}, ${tenant.property.postalCode} ${tenant.property.city}`
+        : `${tenant.address}, ${tenant.postalCode} ${tenant.city}`;
 
-            <View style={styles.section}>
-                <Text>
-                    <Text style={styles.bold}>Concerne : </Text>
-                    <Text style={styles.bold}>Période : </Text>
-                    du {period.start.toLocaleDateString('fr-FR')} au {period.end.toLocaleDateString('fr-FR')}
-                </Text>
-                <Text>
-                    <Text style={styles.bold}>Logement : </Text>
-                    {tenant.property ? (
-                        <Text>{tenant.property.name} - {tenant.property.address}, {tenant.property.postalCode} {tenant.property.city}</Text>
-                    ) : (
-                        <Text>{tenant.address}, {tenant.postalCode} {tenant.city}</Text>
-                    )}
-                </Text>
-            </View>
+    return (
+        <Document>
+            <Page size="A4" style={styles.page}>
+                <Text style={styles.title}>AVIS D&apos;ÉCHÉANCE</Text>
 
-            <View style={styles.box}>
-                <View style={styles.row}>
-                    <Text>Loyer principal</Text>
-                    <Text>{amount.rent.toFixed(2)} €</Text>
-                </View>
-                <View style={styles.row}>
-                    <Text>Provision pour charges</Text>
-                    <Text>{amount.charge.toFixed(2)} €</Text>
-                </View>
-
-                {/* Ligne Solde Précédent si non nul */}
-                {(previousBalance && Math.abs(previousBalance) > 0.01) ? (
-                    <View style={styles.row}>
-                        <Text>{previousBalance > 0 ? "Crédit antérieur (à déduire)" : "Arriérés antérieurs (à ajouter)"}</Text>
-                        <Text>{previousBalance > 0 ? "- " : "+ "}{Math.abs(previousBalance).toFixed(2)} €</Text>
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.bold}>BAILLEUR</Text>
+                        <Text>{bailleur}</Text>
+                        {landlord?.address ? <Text>{landlord.address}</Text> : null}
+                        {landlord?.postalCode && landlord?.city ? (
+                            <Text>{`${landlord.postalCode} ${landlord.city}`}</Text>
+                        ) : null}
+                        {landlord?.email ? <Text>{landlord.email}</Text> : null}
+                        {landlord?.siret ? (
+                            <Text style={{ fontSize: 9, marginTop: 2 }}>{`SIRET : ${landlord.siret}`}</Text>
+                        ) : null}
                     </View>
-                ) : null}
-
-                {/* Ajout ligne CAF */}
-                {(amount.caf && amount.caf > 0) ? (
-                    <View style={styles.row}>
-                        <Text>Allocation Logement (CAF)</Text>
-                        <Text>- {amount.caf.toFixed(2)} €</Text>
+                    <View>
+                        <Text style={styles.bold}>DESTINATAIRE</Text>
+                        <Text>{`${tenant.firstName} ${tenant.lastName}`}</Text>
+                        <Text>{tenant.address}</Text>
+                        <Text>{`${tenant.postalCode} ${tenant.city}`}</Text>
                     </View>
-                ) : null}
-
-                <View style={[styles.row, { marginTop: 10, borderTopWidth: 1, borderTopColor: '#000', paddingTop: 5 }]}>
-                    <Text style={styles.bold}>TOTAL À PAYER</Text>
-                    <Text style={styles.bold}>{(amount.total - (previousBalance || 0) - (amount.caf || 0)).toFixed(2)} €</Text>
                 </View>
-            </View>
 
-            <View style={styles.section}>
-                <Text style={{ marginTop: 20 }}>
-                    Somme à régler avant le 5 du mois.
+                <View style={styles.section}>
+                    <Text>
+                        <Text style={styles.bold}>Période : </Text>
+                        <Text>{`du ${frDate(period.start)} au ${frDate(period.end)}`}</Text>
+                    </Text>
+                    <Text>
+                        <Text style={styles.bold}>Logement : </Text>
+                        <Text>{logement}</Text>
+                    </Text>
+                </View>
+
+                <View style={styles.box}>
+                    <View style={styles.row}>
+                        <Text>Loyer hors charges</Text>
+                        <Text>{euros(amount.rent)}</Text>
+                    </View>
+                    <View style={styles.row}>
+                        <Text>Provision pour charges</Text>
+                        <Text>{euros(amount.charge)}</Text>
+                    </View>
+
+                    {carried !== 0 ? (
+                        <View style={styles.row}>
+                            <Text>
+                                {carried > 0
+                                    ? 'Avance versée (à déduire)'
+                                    : 'Arriérés antérieurs (à ajouter)'}
+                            </Text>
+                            <Text>{`${carried > 0 ? '-' : '+'} ${euros(Math.abs(carried))}`}</Text>
+                        </View>
+                    ) : null}
+
+                    {cafAmount > 0 ? (
+                        <View style={styles.row}>
+                            <Text>Allocation logement versée par la CAF</Text>
+                            <Text>{`- ${euros(cafAmount)}`}</Text>
+                        </View>
+                    ) : null}
+
+                    <View
+                        style={[
+                            styles.row,
+                            { marginTop: 10, borderTopWidth: 1, borderTopColor: '#000', paddingTop: 5 },
+                        ]}
+                    >
+                        <Text style={styles.bold}>TOTAL À PAYER</Text>
+                        <Text style={styles.bold}>{euros(totalDue)}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.section}>
+                    <Text style={{ marginTop: 20 }}>Somme à régler avant le 5 du mois.</Text>
+                </View>
+
+                <View style={{ marginTop: 20 }}>
+                    <Text>{madeAt(landlord?.city, date)}</Text>
+                </View>
+
+                <Text style={styles.footer}>
+                    Ce document est un avis d&apos;échéance valant appel de loyer. Il ne vaut pas
+                    quittance.
                 </Text>
-            </View>
-
-            <View style={styles.section}>
-                <Text style={{ marginTop: 20 }}>
-                    Fait à Paris, le {date.toLocaleDateString('fr-FR')}
-                </Text>
-            </View>
-
-            <Text style={styles.footer}>
-                Ce document est un avis d'échéance valant appel de loyer. Il ne vaut pas quittance.
-            </Text>
-        </Page>
-    </Document>
-);
+            </Page>
+        </Document>
+    );
+};
