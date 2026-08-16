@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/lou270/rental-management:latest
+    image: ghcr.io/lou270/gestion-locative:latest
     container_name: gestion-locative
     restart: unless-stopped
     # Le conteneur écrit la base SQLite dans le volume monté : il doit tourner
