@@ -8,6 +8,7 @@
 
 import { z } from 'zod'
 import { parseDateInput } from './dates'
+import { EXPENSE_CATEGORIES } from './expenses'
 import { PAYMENT_TYPES } from './ledger'
 
 /** Échec d'une server action, avec le détail par champ quand il existe. */
@@ -179,6 +180,20 @@ export const paymentSchema = z.object({
         .min(2000, 'Année invalide.')
         .max(2100, 'Année invalide.'),
     type: z.enum(PAYMENT_TYPES),
+})
+
+/** Charge déductible. La date est celle du décaissement (comptabilité de caisse). */
+export const expenseSchema = z.object({
+    category: z.enum(EXPENSE_CATEGORIES),
+    label: requiredText('Le libellé', 150),
+    amount: amount('Le montant', { min: 0.01 }),
+    date: dateField('La date de règlement'),
+    propertyId: optionalId,
+    note: optionalText(500),
+})
+
+export const updateExpenseSchema = expenseSchema.extend({
+    id: requiredText('Identifiant'),
 })
 
 export const landlordSchema = z.object({

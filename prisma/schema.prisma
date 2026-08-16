@@ -25,9 +25,37 @@ model Property {
   singleRoom  Boolean  @default(false) // Chambre (pièce unique sans WC)
 
   tenants     Tenant[]
-  
+  expenses    Expense[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// Charge décaissée par le bailleur, déductible au régime réel.
+/// La catégorie est une chaîne validée par EXPENSE_CATEGORIES (src/lib/expenses.ts),
+/// même approche que Payment.typology.
+model Expense {
+  id          String   @id @default(cuid())
+  category    String   // cf. EXPENSE_CATEGORIES
+  label       String
+  amount      Float
+  date        DateTime // Date de décaissement : le BIC est une comptabilité de caisse
+
+  // Facultatif : la CFE, les honoraires comptables ou les frais bancaires ne se
+  // rattachent pas à un bien en particulier. La suppression d'un bien remet ce
+  // champ à null (la charge bascule en « Non affecté ») plutôt que d'effacer une
+  // charge déjà déduite.
+  propertyId  String?
+  property    Property? @relation(fields: [propertyId], references: [id])
+
+  note        String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([propertyId])
+  @@index([category])
 }
 
 model Tenant {

@@ -4,7 +4,17 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { Building2, LayoutDashboard, LogOut, Menu, Plus, Settings, Users, X } from 'lucide-react'
+import {
+    Building2,
+    Calculator,
+    LayoutDashboard,
+    LogOut,
+    Menu,
+    Plus,
+    Settings,
+    Users,
+    X,
+} from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { cn } from '@/lib/cn'
 
@@ -12,6 +22,7 @@ const NAV_ITEMS = [
     { href: '/', label: 'Tableau de bord', icon: LayoutDashboard },
     { href: '/tenants', label: 'Locataires', icon: Users },
     { href: '/properties', label: 'Mes biens', icon: Building2 },
+    { href: '/fiscal', label: 'Fiscalité', icon: Calculator },
 ]
 
 export function Navbar() {

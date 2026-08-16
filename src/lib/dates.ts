@@ -64,6 +64,49 @@ export function resolveMonthParam(
     return startOfMonth(fallback)
 }
 
+export const MIN_YEAR = 2000
+export const MAX_YEAR = 2100
+
+/**
+ * Résout le paramètre `?year=` d'une URL. Retombe sur l'année courante si le
+ * paramètre est absent ou aberrant. Pendant de `resolveMonthParam`.
+ *
+ * Le type accepte `null` (retour de `URLSearchParams.get`) comme `undefined`
+ * (les `searchParams` d'une page), pour servir les deux appelants.
+ */
+export function resolveYearParam(
+    year: string | null | undefined,
+    fallback: Date = new Date(),
+): number {
+    const y = Number(year)
+    if (
+        year !== null &&
+        year !== undefined &&
+        String(year).trim() !== '' &&
+        Number.isInteger(y) &&
+        y >= MIN_YEAR &&
+        y <= MAX_YEAR
+    ) {
+        return y
+    }
+    return fallback.getFullYear()
+}
+
+/**
+ * Bornes d'une année civile, pour un `where` Prisma.
+ *
+ * Borne haute exclusive : `lte: 31 décembre` à minuit excluait les
+ * enregistrements du dernier jour de l'année (même écueil que dans
+ * `getFinancialStats`).
+ *
+ * Bornes à minuit et non à midi : les dates saisies sont normalisées à midi
+ * local, mais une donnée importée peut être à minuit. Des bornes à minuit
+ * couvrent l'année entière quelle que soit l'heure enregistrée.
+ */
+export function yearRange(year: number): { gte: Date; lt: Date } {
+    return { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) }
+}
+
 /** Décale une date de `offset` mois, en restant au 1er du mois. */
 export function addMonths(date: Date, offset: number): Date {
     return new Date(date.getFullYear(), date.getMonth() + offset, 1, 12, 0, 0, 0)

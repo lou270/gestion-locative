@@ -1,20 +1,10 @@
 import type { ReactElement } from 'react'
 import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
+import { safeFilename } from './filename'
 
-/**
- * Nettoie un nom de fichier destiné à l'en-tête `Content-Disposition`.
- * Un nom de locataire contenant un guillemet, un retour à la ligne ou un
- * accent casserait l'en-tête (voire permettrait d'y injecter des directives).
- */
-export function safeFilename(value: string, fallback = 'document'): string {
-    const ascii = value
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-zA-Z0-9._-]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-    return ascii || fallback
-}
+// Réexporté pour les appelants historiques (route CAF notamment).
+export { safeFilename }
 
 /** Rend un document react-pdf et le renvoie en pièce jointe. */
 export async function pdfResponse(
