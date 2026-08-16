@@ -76,6 +76,14 @@ COPY --chmod=0755 start.sh ./start.sh
 COPY --from=builder --chown=node:node /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder --chown=node:node /app/node_modules/@prisma ./node_modules/@prisma
 
+# `prisma/seed-admin.js` est exécuté par `node`, hors du bundle Next : ses
+# `require` sont résolus sur le disque, pas dans les chunks du serveur. Or Next
+# compile bcryptjs *dans* ses chunks et ne le laisse donc pas dans
+# `.next/standalone/node_modules`. Sans cette copie, le seed échoue sur
+# « Cannot find module 'bcryptjs' » et aucun compte administrateur n'est créé.
+# (bcryptjs n'a lui-même aucune dépendance : ce dossier seul suffit.)
+COPY --from=builder --chown=node:node /app/node_modules/bcryptjs ./node_modules/bcryptjs
+
 USER node
 
 EXPOSE 3000
