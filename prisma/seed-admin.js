@@ -13,6 +13,14 @@ const bcrypt = require('bcryptjs')
 
 const prisma = new PrismaClient()
 
+/**
+ * Coût bcrypt. 12 est la recommandation courante ; 10 restait le défaut
+ * historique de la bibliothèque. Les empreintes existantes en portent le coût
+ * dans leur préfixe (`$2b$10$…`) et continuent de se vérifier sans migration :
+ * seules les empreintes réécrites adoptent le nouveau coût.
+ */
+const BCRYPT_ROUNDS = 12
+
 async function main() {
     const email = process.env.ADMIN_EMAIL
     const password = process.env.ADMIN_PASSWORD
@@ -37,7 +45,7 @@ async function main() {
         await prisma.user.create({
             data: {
                 email,
-                password: await bcrypt.hash(password, 10),
+                password: await bcrypt.hash(password, BCRYPT_ROUNDS),
                 name: 'Administrateur',
                 role: 'ADMIN',
             },
@@ -51,7 +59,7 @@ async function main() {
     if (!passwordsMatch) {
         await prisma.user.update({
             where: { email },
-            data: { password: await bcrypt.hash(password, 10), role: 'ADMIN' },
+            data: { password: await bcrypt.hash(password, BCRYPT_ROUNDS), role: 'ADMIN' },
         })
         console.log(`✅  Mot de passe de « ${email} » mis à jour depuis l'environnement.`)
     } else if (existing.role !== 'ADMIN') {

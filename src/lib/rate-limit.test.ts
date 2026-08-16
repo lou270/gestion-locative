@@ -4,6 +4,7 @@ import {
     clientKeyFromHeaders,
     formatRetryDelay,
     getLoginStatus,
+    isProxyTrusted,
     MAX_ATTEMPTS,
     registerLoginFailure,
     resetLoginAttempts,
@@ -69,6 +70,17 @@ describe('limitation des tentatives de connexion', () => {
 
         expect(getLoginStatus('ip:5.6.7.8', T0).blocked).toBe(false)
     })
+
+    it('ne lève pas le blocage sur un échec supplémentaire', () => {
+        // Sans garde, l'échec de trop remplaçait le compteur par un neuf et
+        // déverrouillait la clé — l'inverse de l'effet recherché.
+        failTimes('ip:1.2.3.4', MAX_ATTEMPTS)
+        registerLoginFailure('ip:1.2.3.4', T0 + 1000)
+
+        const status = getLoginStatus('ip:1.2.3.4', T0 + 2000)
+        expect(status.blocked).toBe(true)
+        expect(status.remaining).toBe(0)
+    })
 })
 
 describe('clientKeyFromHeaders', () => {
@@ -76,25 +88,77 @@ describe('clientKeyFromHeaders', () => {
         get: (name: string) => values[name.toLowerCase()] ?? null,
     })
 
-    it('retient la dernière entrée de X-Forwarded-For', () => {
-        // La partie gauche est fournie par le client : un attaquant y injecterait
-        // une valeur différente à chaque essai pour repartir d'un compteur neuf.
-        // Le proxy ajoute l'adresse réellement vue en fin de liste.
-        const key = clientKeyFromHeaders(
-            headersOf({ 'x-forwarded-for': '10.0.0.1, 203.0.113.9, 198.51.100.7' }),
-        )
+    describe('derrière un proxy déclaré', () => {
+        it('retient la dernière entrée de X-Forwarded-For', () => {
+            // La partie gauche est fournie par le client : un attaquant y injecterait
+            // une valeur différente à chaque essai pour repartir d'un compteur neuf.
+            // Le proxy ajoute l'adresse réellement vue en fin de liste.
+            const key = clientKeyFromHeaders(
+                headersOf({ 'x-forwarded-for': '10.0.0.1, 203.0.113.9, 198.51.100.7' }),
+                'inconnu',
+                { trustProxy: true },
+            )
 
-        expect(key).toBe('ip:198.51.100.7')
+            expect(key).toBe('ip:198.51.100.7')
+        })
+
+        it('retombe sur X-Real-IP', () => {
+            expect(
+                clientKeyFromHeaders(headersOf({ 'x-real-ip': '203.0.113.9' }), 'inconnu', {
+                    trustProxy: true,
+                }),
+            ).toBe('ip:203.0.113.9')
+        })
+
+        it('retombe sur l’identifiant fourni sans en-tête de proxy', () => {
+            expect(
+                clientKeyFromHeaders(headersOf({}), 'jean@example.com', { trustProxy: true }),
+            ).toBe('id:jean@example.com')
+        })
     })
 
-    it('retombe sur X-Real-IP', () => {
-        expect(clientKeyFromHeaders(headersOf({ 'x-real-ip': '203.0.113.9' }))).toBe(
-            'ip:203.0.113.9',
-        )
+    describe('sans proxy déclaré', () => {
+        it('ignore X-Forwarded-For', () => {
+            // En exposition directe l'en-tête est fourni par l'appelant :
+            // s'y fier laisserait l'attaquant repartir d'un compteur neuf.
+            const key = clientKeyFromHeaders(
+                headersOf({ 'x-forwarded-for': '10.0.0.1, 198.51.100.7' }),
+                'jean@example.com',
+                { trustProxy: false },
+            )
+
+            expect(key).toBe('id:jean@example.com')
+        })
+
+        it('ignore X-Real-IP', () => {
+            expect(
+                clientKeyFromHeaders(headersOf({ 'x-real-ip': '203.0.113.9' }), 'jean@example.com', {
+                    trustProxy: false,
+                }),
+            ).toBe('id:jean@example.com')
+        })
     })
 
-    it('retombe sur l’identifiant fourni sans en-tête de proxy', () => {
-        expect(clientKeyFromHeaders(headersOf({}), 'jean@example.com')).toBe('id:jean@example.com')
+    describe('isProxyTrusted', () => {
+        const initial = process.env.TRUST_PROXY
+        afterEach(() => {
+            if (initial === undefined) delete process.env.TRUST_PROXY
+            else process.env.TRUST_PROXY = initial
+        })
+
+        it('reconnaît « 1 » et « true »', () => {
+            process.env.TRUST_PROXY = '1'
+            expect(isProxyTrusted()).toBe(true)
+            process.env.TRUST_PROXY = 'TRUE'
+            expect(isProxyTrusted()).toBe(true)
+        })
+
+        it('refuse par défaut', () => {
+            delete process.env.TRUST_PROXY
+            expect(isProxyTrusted()).toBe(false)
+            process.env.TRUST_PROXY = 'non'
+            expect(isProxyTrusted()).toBe(false)
+        })
     })
 })
 

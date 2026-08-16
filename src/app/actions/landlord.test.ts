@@ -40,13 +40,25 @@ describe('Landlord server actions', () => {
             // @ts-expect-error jeu de données partiel
             prismaMock.landlord.findFirst.mockResolvedValue({ id: 'l1', firstName: 'Marie' })
 
-            await expect(getLandlord()).resolves.toEqual({ id: 'l1', firstName: 'Marie' })
+            await expect(getLandlord()).resolves.toEqual({
+                success: true,
+                data: { id: 'l1', firstName: 'Marie' },
+            })
         })
 
-        it('lève sans session', async () => {
+        it('retourne `null` quand le profil n’a jamais été renseigné', async () => {
+            prismaMock.landlord.findFirst.mockResolvedValue(null)
+
+            await expect(getLandlord()).resolves.toEqual({ success: true, data: null })
+        })
+
+        it('échoue proprement sans session', async () => {
             ;(auth as jest.Mock).mockResolvedValueOnce(null)
 
-            await expect(getLandlord()).rejects.toThrow()
+            const result = await getLandlord()
+
+            expect(result.success).toBe(false)
+            expect(prismaMock.landlord.findFirst).not.toHaveBeenCalled()
         })
     })
 

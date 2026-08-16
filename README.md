@@ -86,20 +86,31 @@ npm run build # build de production (inclut la vérification TypeScript)
 - **Authentification** : seul l'administrateur défini dans `.env` peut se
   connecter. Pour changer le mot de passe, modifiez le `.env` puis redémarrez
   (Docker) ou relancez `npx prisma db seed` (local).
-- **Tentatives de connexion** : 5 échecs depuis une même adresse IP en 15
-  minutes bloquent celle-ci pendant 15 minutes
-  ([`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)). Le contrôle est appliqué
-  dans `authorize()` et couvre donc aussi les appels directs à
-  `/api/auth/callback/credentials`, pas seulement le formulaire.
+- **Session** : sa durée de vie est de 12 heures
+  ([`src/auth.config.ts`](src/auth.config.ts)), au lieu des 30 jours par défaut
+  d'Auth.js.
+- **Tentatives de connexion** : 5 échecs en 15 minutes bloquent l'appelant
+  pendant 15 minutes ([`src/lib/rate-limit.ts`](src/lib/rate-limit.ts)). Le
+  contrôle est appliqué dans `authorize()` et couvre donc aussi les appels
+  directs à `/api/auth/callback/credentials`, pas seulement le formulaire.
   Le compteur vit en mémoire du processus : il repart à zéro au redémarrage du
   conteneur. Une limitation au niveau du reverse proxy reste un complément utile
   (voir ci-dessous).
 
-  L'adresse retenue est la **dernière** entrée de `X-Forwarded-For`, celle que le
-  proxy a réellement observée — les entrées de gauche sont fournies par le client
-  et peuvent être falsifiées. Si vous placez un CDN devant le proxy, cette valeur
-  devient l'adresse du CDN et la limitation perd son intérêt : il faut alors se
-  fier à l'en-tête d'adresse réelle du CDN.
+  **`TRUST_PROXY` détermine ce qui est compté.** Cette variable doit valoir `1`
+  *uniquement* si un reverse proxy se trouve devant l'application :
+
+  - `TRUST_PROXY=1` — les échecs sont comptés par adresse IP, lue dans la
+    **dernière** entrée de `X-Forwarded-For` : celle que le proxy a réellement
+    observée. Les entrées de gauche sont fournies par le client et falsifiables.
+    Si vous placez un CDN devant le proxy, cette valeur devient l'adresse du CDN
+    et la limitation perd son intérêt : il faut alors se fier à l'en-tête
+    d'adresse réelle du CDN.
+  - **valeur absente ou `0` (défaut)** — les en-têtes de proxy sont ignorés et
+    les échecs sont comptés par adresse email. C'est le réglage correct quand le
+    port 3000 est joignable directement : `X-Forwarded-For` serait alors fourni
+    par l'appelant lui-même, et un attaquant en changerait à chaque essai pour
+    repartir d'un compteur neuf — la limitation ne protégerait plus rien.
 
 ### Limiter aussi au niveau de Nginx Proxy Manager (optionnel)
 

@@ -67,7 +67,14 @@ export function registerLoginFailure(key: string, now: number = Date.now()): Log
 
     const bucket = buckets.get(key)
 
-    if (!bucket || now - bucket.windowStart > WINDOW_MS || bucket.blockedUntil > now) {
+    // Une clé bloquée le reste : sans cette garde, un échec supplémentaire
+    // remplacerait le compteur par un neuf et lèverait le blocage. Le cas ne
+    // se produit pas aujourd'hui — `authorize` sort avant d'arriver ici — mais
+    // l'efficacité du blocage ne doit pas dépendre d'un contrôle situé dans un
+    // autre fichier.
+    if (bucket && bucket.blockedUntil > now) return getLoginStatus(key, now)
+
+    if (!bucket || now - bucket.windowStart > WINDOW_MS) {
         const fresh: Bucket = { failures: 1, windowStart: now, blockedUntil: 0 }
         buckets.set(key, fresh)
         return getLoginStatus(key, now)
@@ -92,28 +99,53 @@ export function resetLoginAttempts() {
 }
 
 /**
+ * Un reverse proxy est-il déclaré devant l'application ?
+ *
+ * `X-Forwarded-For` et `X-Real-IP` ne sont dignes de foi que si quelque chose
+ * les réécrit en amont. En exposition directe — `docker compose` publie le port
+ * 3000 sur l'hôte, rien n'impose un proxy — ces en-têtes sont entièrement
+ * fournis par l'appelant : les lire reviendrait à laisser l'attaquant choisir
+ * son propre compteur, donc à annuler la limitation sur le seul compte
+ * administrateur.
+ *
+ * On exige donc une déclaration explicite de l'exploitant plutôt que de deviner.
+ */
+export function isProxyTrusted(): boolean {
+    const value = process.env.TRUST_PROXY?.trim().toLowerCase()
+    return value === '1' || value === 'true'
+}
+
+/**
  * Identifie l'appelant à partir des en-têtes.
  *
- * `X-Forwarded-For` est une liste dont le client contrôle la partie gauche : un
- * attaquant peut y injecter une valeur arbitraire pour obtenir un compteur neuf
- * à chaque essai. Nginx Proxy Manager *ajoute* l'adresse réellement observée en
- * fin de liste — c'est donc la dernière entrée, et elle seule, qui fait foi.
+ * Derrière un proxy déclaré : `X-Forwarded-For` est une liste dont le client
+ * contrôle la partie gauche : un attaquant peut y injecter une valeur
+ * arbitraire pour obtenir un compteur neuf à chaque essai. Nginx Proxy Manager
+ * *ajoute* l'adresse réellement observée en fin de liste — c'est donc la
+ * dernière entrée, et elle seule, qui fait foi.
+ *
+ * Sans proxy déclaré : les en-têtes sont ignorés et le compteur porte sur
+ * l'identifiant fourni (l'email saisi). Moins fin qu'une IP, mais incontournable
+ * — un attaquant visant le compte administrateur doit en employer l'adresse.
  */
 export function clientKeyFromHeaders(
     headers: { get(name: string): string | null },
     fallback = 'inconnu',
+    { trustProxy = isProxyTrusted() }: { trustProxy?: boolean } = {},
 ): string {
-    const forwarded = headers.get('x-forwarded-for')
-    if (forwarded) {
-        const parts = forwarded
-            .split(',')
-            .map((part) => part.trim())
-            .filter(Boolean)
-        if (parts.length > 0) return `ip:${parts[parts.length - 1]}`
-    }
+    if (trustProxy) {
+        const forwarded = headers.get('x-forwarded-for')
+        if (forwarded) {
+            const parts = forwarded
+                .split(',')
+                .map((part) => part.trim())
+                .filter(Boolean)
+            if (parts.length > 0) return `ip:${parts[parts.length - 1]}`
+        }
 
-    const realIp = headers.get('x-real-ip')
-    if (realIp?.trim()) return `ip:${realIp.trim()}`
+        const realIp = headers.get('x-real-ip')
+        if (realIp?.trim()) return `ip:${realIp.trim()}`
+    }
 
     return `id:${fallback}`
 }

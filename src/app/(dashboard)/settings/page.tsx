@@ -6,7 +6,20 @@ import { PageHeader } from '@/components/ui/PageHeader'
 export const metadata = { title: 'Paramètres · Gestion Locative' }
 
 export default async function SettingsPage() {
-    const landlord = await getLandlord()
+    const result = await getLandlord()
+
+    if (!result.success) {
+        return (
+            <div className="mx-auto max-w-3xl">
+                <PageHeader title="Paramètres" />
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {result.error}
+                </p>
+            </div>
+        )
+    }
+
+    const landlord = result.data
 
     return (
         <div className="mx-auto max-w-3xl">

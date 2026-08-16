@@ -3,11 +3,27 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { requireSession, UnauthorizedError } from '@/lib/auth-guard'
-import { ActionResult, landlordSchema, validateFormData } from '@/lib/validation'
+import { ActionFailure, ActionResult, landlordSchema, validateFormData } from '@/lib/validation'
 
+function toFailure(error: unknown, fallback: string): ActionFailure {
+    if (error instanceof UnauthorizedError) return { success: false, error: error.message }
+    console.error(fallback, error)
+    return { success: false, error: fallback }
+}
+
+/**
+ * Profil bailleur, ou `null` s'il n'a jamais été renseigné — ce qui n'est pas
+ * une erreur : l'application démarre sur une base vide et les documents portent
+ * alors une mention générique.
+ */
 export async function getLandlord() {
-    await requireSession()
-    return await prisma.landlord.findFirst()
+    try {
+        await requireSession()
+        const landlord = await prisma.landlord.findFirst()
+        return { success: true as const, data: landlord }
+    } catch (error) {
+        return toFailure(error, 'Impossible de récupérer le profil bailleur.')
+    }
 }
 
 export async function updateLandlord(formData: FormData): Promise<ActionResult> {
@@ -30,8 +46,6 @@ export async function updateLandlord(formData: FormData): Promise<ActionResult> 
         revalidatePath('/')
         return { success: true, message: 'Paramètres mis à jour avec succès.' }
     } catch (error) {
-        if (error instanceof UnauthorizedError) return { success: false, error: error.message }
-        console.error('Error updating landlord:', error)
-        return { success: false, error: 'Une erreur est survenue lors de la sauvegarde.' }
+        return toFailure(error, 'Une erreur est survenue lors de la sauvegarde.')
     }
 }

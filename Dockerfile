@@ -39,9 +39,9 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 # Uncomment the following line in case you want to disable telemetry during runtime.
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # L'image de base fournit déjà l'utilisateur `node` en uid/gid 1000. On le
 # réutilise au lieu d'en créer un en 1001 : sur un serveur Linux, le premier
@@ -63,23 +63,26 @@ RUN mkdir -p /app/data && chown node:node /app/data
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
-# Copy prisma schema for migrations if needed
+# Schéma et migrations, appliqués au démarrage par `prisma migrate deploy`.
 COPY --from=builder /app/prisma ./prisma
-COPY start.sh ./start.sh
+COPY --chmod=0755 start.sh ./start.sh
 
-# Install prisma CLI for migrations (lightweight way)
-RUN npm install prisma --save-dev
-
-# Give execution rights
-RUN chmod +x start.sh
+# CLI Prisma, reprise telle quelle de l'étage `builder` plutôt que réinstallée ici.
+# Un `npm install` dans l'étage final refait un appel au registre npm après la
+# copie du bundle standalone : la version installée peut différer de celle du
+# lockfile, et la construction échoue sans accès sortant. `@prisma` apporte les
+# moteurs dont la CLI a besoin ; il complète le `@prisma/client` déjà présent
+# dans le bundle sans l'écraser.
+COPY --from=builder --chown=node:node /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=node:node /app/node_modules/@prisma ./node_modules/@prisma
 
 USER node
 
 EXPOSE 3000
 
-ENV PORT 3000
+ENV PORT=3000
 # set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
+ENV HOSTNAME="0.0.0.0"
 
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
